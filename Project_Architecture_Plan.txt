@@ -1,0 +1,104 @@
+====================================================================
+PROJECT ENGINEERING & ARCHITECTURE PLAN
+
+PROJECT NAME: EchoVision (YankıGörüş)
+TYPE: Zero-UI AI Assistant for the Visually Impaired
+FRAMEWORK: Flutter (Cross-platform)
+DATE: March 2026
+
+PRODUCT VISION & NAMING
+
+Adopted Name: EchoVision (YankıGörüş)
+
+Philosophy: Converting visual data into auditory and haptic (touch) echoes.
+
+Target Audience: Visually impaired individuals needing real-time environmental awareness and currency identification.
+
+Core Principle: "Zero-UI" - No complex buttons, relying entirely on gestures, continuous scanning, audio, and vibration.
+
+SYSTEM ARCHITECTURE (High-Level Design)
+
+The system is built on a Clean Architecture approach, divided into 3 primary engines to ensure stability and low battery consumption.
+
+A. Vision Pipeline (Input Layer)
+
+Technology: Flutter camera plugin.
+
+Function: Captures continuous real-time video stream (ImageStream).
+
+Optimization (Crucial): Implements "Frame Throttling". Instead of processing 60 FPS (which drains battery and overheats the phone), the pipeline will only extract and process 3 Frames Per Second (3 FPS).
+
+B. Inference Core (AI Processing Layer)
+
+Technology: google_ml_kit (Object Detection) & Custom TFLite Model (Currency).
+
+Function: Operates 100% Offline for privacy and zero latency.
+
+Mechanism: Receives the throttled frames, analyzes them, and outputs Bounding Boxes (coordinates) and Labels (e.g., "Sandalye", "Masa", "50 Lira").
+
+C. Sensory Feedback Engine (Output Layer - The HCI Core)
+
+Audio Module (flutter_tts): Converts the text labels into localized speech (Turkish). Includes a "Debounce" function to prevent repeating the same word constantly (e.g., saying "Kapı" once every 5 seconds, not 10 times a second).
+
+Haptic Module (vibration): Translates the Bounding Box data into tactile feedback.
+
+Large bounding box (object is close) = Strong, continuous vibration.
+
+Object centered in frame = Distinct haptic pulse indicating "Target Locked".
+
+ENGINEERING REQUIREMENTS (System Specs)
+
+[Functional Requirements - FRs]
+FR1: The system must identify at least 80 common environmental objects.
+FR2: The system must recognize Turkish Lira banknotes (5, 10, 20, 50, 100, 200 TL).
+FR3: The UI must support full-screen gestures (Swipe Right -> Object Mode, Swipe Left -> Currency Mode).
+FR4: Double-tapping anywhere on the screen must instantly pause/resume audio feedback (Mute functionality).
+
+[Non-Functional Requirements - NFRs]
+NFR1 (Performance): Total latency from camera capture to audio output must be < 500ms.
+NFR2 (Resource Management): CPU usage must not exceed 40% to prevent thermal throttling.
+NFR3 (Accessibility): The app must function seamlessly even if the OS-level screen reader (TalkBack/VoiceOver) is active.
+NFR4 (Robustness): The app must gracefully handle low-light conditions (e.g., auto-enabling the flash or prompting the user audibly: "Işık yetersiz").
+
+AGILE IMPLEMENTATION ROADMAP (4-Week Sprint Plan)
+
+Sprint 1: The Foundation (Core Setup)
+
+Initialize Flutter project and setup basic Clean Architecture folders.
+
+Integrate camera plugin.
+
+Implement the Camera Preview and establish the ImageStream listener.
+
+Critical Goal: Implement the 3 FPS Frame Throttling logic to ensure stability.
+
+Sprint 2: The Brain (AI Integration)
+
+Integrate google_ml_kit_object_detection.
+
+Bridge the Camera ImageStream to the ML Kit format (InputImage).
+
+Console Log testing: Verify that the AI is successfully identifying objects and printing labels/confidence scores to the debug console.
+
+Sprint 3: The Senses (HCI Output)
+
+Integrate flutter_tts and configure for Turkish language.
+
+Implement the "Debouncer" logic so the app doesn't spam the user with audio.
+
+Integrate vibration.
+
+Build the "Radar Logic": Map the object's Bounding Box size/position to vibration intensity.
+
+Sprint 4: Polish & Production Readiness (Finalization)
+
+Integrate the custom TFLite model for Currency Detection.
+
+Implement the Swipe Gestures to switch between Object/Currency modes.
+
+Implement error handling (e.g., low light warnings).
+
+Conduct "Blindfold Testing": Navigate a room using only the app to verify the HCI experience.
+
+====================================================================
+END OF DOCUMENT

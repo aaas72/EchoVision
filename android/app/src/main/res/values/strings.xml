@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">EchoVision</string>
+    <string name="accessibility_service_description">EchoVision sesli asistan hizmeti. Ses tuşuna 3 kez basarak uygulamayı açabilirsiniz. Bu hizmet görme engelli kullanıcıların ekrana dokunmadan uygulamayı başlatmasına yardımcı olur.</string>
+</resources>

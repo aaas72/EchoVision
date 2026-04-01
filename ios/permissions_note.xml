@@ -1,0 +1,13 @@
+<!-- iOS Camera & Microphone permissions -->
+<!-- Add these keys to ios/Runner/Info.plist -->
+<!--
+<key>NSCameraUsageDescription</key>
+<string>EchoVision needs camera access to identify objects and currency for visually impaired users.</string>
+<key>NSSpeechRecognitionUsageDescription</key>
+<string>EchoVision uses speech synthesis to describe detected objects.</string>
+-->
+
+<!-- 
+NOTE: After running 'flutter create .', add the above keys 
+inside the <dict> section of ios/Runner/Info.plist 
+-->
