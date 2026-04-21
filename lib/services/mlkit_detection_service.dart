@@ -77,9 +77,13 @@ class MLKitDetectionService {
   }
 
   /// Translate English label to Turkish
-  String _translateToTurkish(String englishLabel) {
+  static String translateToTurkish(String englishLabel) {
     final key = englishLabel.toLowerCase().trim();
-    return _turkishLabels[key] ?? englishLabel;
+    return _turkishLabels[key] ?? ''; // Returns empty string if not in dictionary to cancel English
+  }
+
+  String _translateToTurkish(String englishLabel) {
+    return translateToTurkish(englishLabel);
   }
 
   Future<void> dispose() async {

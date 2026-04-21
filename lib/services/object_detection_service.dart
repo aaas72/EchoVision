@@ -371,9 +371,9 @@ class ObjectDetectionService {
   String _getLabel(int index) {
     if (index >= 0 && index < _cocoLabels.length) {
       final eng = _cocoLabels[index];
-      return _cocoTurkish[eng] ?? eng;
+      return _cocoTurkish[eng] ?? '';
     }
-    return 'nesne';
+    return '';
   }
 
   List<String> _processResults(List<_Detection> detections,
@@ -389,7 +389,7 @@ class ObjectDetectionService {
     final uniqueLabels = <String>{};
     final results = <String>[];
     for (final d in processed) {
-      if (uniqueLabels.add(d.label)) {
+      if (d.label.isNotEmpty && uniqueLabels.add(d.label)) {
         results.add(d.label);
         // Debug print
         print(

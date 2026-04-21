@@ -22,6 +22,7 @@ dependencies:
   geocoding: ^3.0.0
   sensors_plus: ^6.1.1
   http: ^1.2.0
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:
@@ -33,3 +34,4 @@ flutter:
 
   assets:
     - assets/models/
+    - assets/models/mlkit_mobilenet.tflite

@@ -13,7 +13,6 @@ import '../../services/audio_feedback_service.dart';
 import '../../services/location_service.dart';
 import '../../services/light_detector_service.dart';
 import '../../services/orientation_service.dart';
-import '../../services/accessibility_service.dart';
 import '../../core/enums/detection_mode.dart';
 import '../widgets/focus_ring.dart';
 
