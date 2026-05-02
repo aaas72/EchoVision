@@ -10,9 +10,6 @@ dependencies:
   flutter:
     sdk: flutter
   camera: ^0.11.0+2
-  google_mlkit_object_detection: ^0.13.0
-  google_mlkit_image_labeling: ^0.12.0
-  google_mlkit_text_recognition: ^0.13.1
   tflite_flutter: ^0.12.0
   image: ^4.2.0
   flutter_tts: ^4.2.0
@@ -34,4 +31,5 @@ flutter:
 
   assets:
     - assets/models/
-    - assets/models/mlkit_mobilenet.tflite
+    - assets/models/yolo11n.tflite
+    - assets/models/labelmap.txt

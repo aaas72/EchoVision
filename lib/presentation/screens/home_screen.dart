@@ -5,15 +5,13 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../services/camera_service.dart';
 import '../../services/tts_service.dart';
 import '../../services/haptic_service.dart';
-import '../../services/object_detection_service.dart';
-import '../../services/mlkit_detection_service.dart';
-import '../../services/currency_detection_service.dart';
-import '../../services/gemini_vision_service.dart';
+import '../../services/yolo_service.dart';
 import '../../services/audio_feedback_service.dart';
 import '../../services/location_service.dart';
 import '../../services/light_detector_service.dart';
 import '../../services/orientation_service.dart';
 import '../../core/enums/detection_mode.dart';
+import '../../domain/models/detection_result.dart';
 import '../widgets/focus_ring.dart';
 
 // ══════════════════════════════════════════════════════════════
@@ -44,12 +42,7 @@ class _HomeScreenState extends State<HomeScreen>
   final CameraService _cameraService = CameraService();
   final TtsService _ttsService = TtsService();
   final HapticService _hapticService = HapticService();
-  final MLKitDetectionService _mlkitDetectionService = MLKitDetectionService();
-  final ObjectDetectionService _objectDetectionService =
-      ObjectDetectionService();
-  final CurrencyDetectionService _currencyDetectionService =
-      CurrencyDetectionService();
-  final GeminiVisionService _geminiVisionService = GeminiVisionService();
+  final YoloService _yoloService = YoloService();
   final LocationService _locationService = LocationService();
   final LightDetectorService _lightDetectorService = LightDetectorService();
   final OrientationService _orientationService = OrientationService();
@@ -62,6 +55,10 @@ class _HomeScreenState extends State<HomeScreen>
   bool _isAnalyzing = false;
   bool _isFetchingLocation = false;
   String? _lastResult;
+
+  // ── Live Detection ──
+  List<DetectionResult> _detections = [];
+  bool _isProcessingFrame = false;
 
   // ── Idle voice guidance ──
   Timer? _idleTimer;
@@ -133,10 +130,7 @@ class _HomeScreenState extends State<HomeScreen>
       await _cameraService.initialize();
       await _ttsService.initialize();
       await _hapticService.initialize();
-      await _mlkitDetectionService.initialize();
-      await _objectDetectionService.initialize();
-      await _currencyDetectionService.initialize();
-      await _geminiVisionService.initialize();
+      await _yoloService.initialize();
 
       setState(() => _isLoading = false);
 
@@ -152,6 +146,12 @@ class _HomeScreenState extends State<HomeScreen>
 
       // ── Start idle guidance timer ──
       _resetIdleTimer();
+
+      // ── Start live detection ──
+      _startLiveDetection();
+
+      // ── Mute voice by default as requested ──
+      _ttsService.toggleMute();
 
       // ── Orientation guidance DISABLED for now ──
       // _orientationService.onGuidance = (msg) {
@@ -202,6 +202,30 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // ══════════════════════════════════════════════════════════════
+  // ██  LIVE DETECTION
+  // ══════════════════════════════════════════════════════════════
+
+  void _startLiveDetection() {
+    _cameraService.startImageStream((image) async {
+      if (_isProcessingFrame || _currentMode != DetectionMode.object || _isAnalyzing) return;
+      
+      _isProcessingFrame = true;
+      try {
+        final results = await _yoloService.analyzeFrame(image, _cameraService.sensorOrientation);
+        if (mounted) {
+          setState(() {
+            _detections = results;
+          });
+        }
+      } catch (e) {
+        print('Frame processing error: $e');
+      } finally {
+        _isProcessingFrame = false;
+      }
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════
   // ██  CORE: TAP TO SCAN
   // ══════════════════════════════════════════════════════════════
 
@@ -239,30 +263,17 @@ class _HomeScreenState extends State<HomeScreen>
       String result;
 
       if (_currentMode == DetectionMode.object) {
-        // Combine ML Kit + TFLite for maximum detection coverage
-        final allDetections = <String>{};
-
-        // 1. ML Kit detection (hundreds of objects)
-        final mlkitResults =
-            await _mlkitDetectionService.analyzeImage(imageFile);
-        allDetections.addAll(mlkitResults);
-
-        // 2. TFLite detection (COCO 80 classes)
-        final tfliteResults =
-            await _objectDetectionService.analyzeImage(imageFile);
-        allDetections.addAll(tfliteResults);
-
-        if (allDetections.isNotEmpty) {
-          result = allDetections.take(10).join(', ');
+        final results = await _yoloService.analyzeImage(imageFile);
+        
+        if (results.isNotEmpty) {
+          // Speak the description which includes position (e.g. "Sandalye solda")
+          result = results.map((d) => d.description).join(', ');
         } else {
-          // 3. Fallback to Gemini Vision AI (requires internet)
-          print('Local detection empty, trying Gemini Vision...');
-          result = await _geminiVisionService.analyzeImage(imageFile);
+          result = 'Herhangi bir nesne algılanamadı.';
         }
       } else {
-        final currency =
-            await _currencyDetectionService.analyzeImage(imageFile);
-        result = currency ?? 'Para birimi tanınamadı. Tekrar deneyin.';
+        // Light mode is handled at the start of _onTapToScan
+        result = '';
       }
 
       print('Result: $result');
@@ -288,7 +299,6 @@ class _HomeScreenState extends State<HomeScreen>
 
   static const _modeOrder = [
     DetectionMode.object,
-    DetectionMode.currency,
     DetectionMode.light,
   ];
 
@@ -338,12 +348,11 @@ class _HomeScreenState extends State<HomeScreen>
       case DetectionMode.object:
         name = 'Nesne Tanıma Modu';
         break;
-      case DetectionMode.currency:
-        name = 'Para Tanıma Modu';
-        break;
       case DetectionMode.light:
         name = 'Işık Algılayıcı';
         break;
+      default:
+        name = '';
     }
     _ttsService.speakImmediate(name);
 
@@ -447,10 +456,7 @@ class _HomeScreenState extends State<HomeScreen>
     _orientationService.dispose();
     _cameraService.dispose();
     _ttsService.dispose();
-    _mlkitDetectionService.dispose();
-    _objectDetectionService.dispose();
-    _currencyDetectionService.dispose();
-    _geminiVisionService.dispose();
+    _yoloService.dispose();
     super.dispose();
   }
 
@@ -632,8 +638,20 @@ class _HomeScreenState extends State<HomeScreen>
     return Stack(
       fit: StackFit.expand,
       children: [
-        // ── 1. FULL-BLEED CAMERA ──
-        CameraPreview(_cameraService.controller!),
+        // ── 1. FULL-BLEED CAMERA (Aspect Ratio Fixed) ──
+        SizedBox.expand(
+          child: FittedBox(
+            fit: BoxFit.cover,
+            child: SizedBox(
+              width: _cameraService.controller!.value.previewSize!.height,
+              height: _cameraService.controller!.value.previewSize!.width,
+              child: CameraPreview(_cameraService.controller!),
+            ),
+          ),
+        ),
+
+        // ── 1.5 BOUNDING BOX OVERLAY ──
+        _buildBoundingBoxes(),
 
         // ── 2. TOP GRADIENT VEIL ──
         Positioned(
@@ -844,10 +862,6 @@ class _HomeScreenState extends State<HomeScreen>
         label = 'Nesne Tarayıcı';
         icon = Icons.center_focus_strong_rounded;
         break;
-      case DetectionMode.currency:
-        label = 'Para Tarayıcı';
-        icon = Icons.payments_rounded;
-        break;
       case DetectionMode.light:
         label = 'Işık Algılayıcı';
         icon = Icons.lightbulb_rounded;
@@ -990,6 +1004,66 @@ class _HomeScreenState extends State<HomeScreen>
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildBoundingBoxes() {
+    if (_detections.isEmpty || _currentMode != DetectionMode.object) {
+      return const SizedBox.shrink();
+    }
+
+    final size = MediaQuery.of(context).size;
+    
+    return Stack(
+      children: _detections.map((d) {
+        final box = d.boundingBox;
+        
+        // Simple mapping (Assuming full screen coverage)
+        final left = box.left * size.width;
+        final top = box.top * size.height;
+        final width = box.width * size.width;
+        final height = box.height * size.height;
+
+        return Positioned(
+          left: left,
+          top: top,
+          width: width,
+          height: height,
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.white, width: 2),
+              borderRadius: BorderRadius.circular(4),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.3),
+                  blurRadius: 4,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.only(
+                    bottomRight: Radius.circular(4),
+                  ),
+                ),
+                child: Text(
+                  d.label,
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 }

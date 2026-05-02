@@ -35,7 +35,7 @@ class TtsService {
     // Slightly higher pitch for clearer voice (1.0 = normal, 1.1 = slightly higher)
     await _flutterTts.setPitch(1.05);
 
-    // Try Turkish variants in order of preference
+    // Try Arabic variants in order of preference
     final languages = await _flutterTts.getLanguages;
     String selectedLang = 'en-US'; // fallback
 
@@ -43,8 +43,8 @@ class TtsService {
       final langList = List<String>.from(languages.map((e) => e.toString()));
       print('TTS Available languages: $langList');
 
-      // Try Turkish variants
-      for (final lang in ['tr-TR', 'tr', 'tur']) {
+      // Try Arabic variants
+      for (final lang in ['ar-SA', 'ar', 'ara']) {
         if (langList.any((l) => l.toLowerCase() == lang.toLowerCase())) {
           selectedLang = lang;
           break;
@@ -55,36 +55,29 @@ class TtsService {
     print('TTS Selected language: $selectedLang');
     await _flutterTts.setLanguage(selectedLang);
 
-    // Slightly slower speech rate for better clarity (0.5 = slower, clearer)
+    // Slightly slower speech rate for better clarity
     await _flutterTts.setSpeechRate(0.50);
 
-    // Try to select a female voice if available (usually clearer)
+    // Try to select a voice if available
     final voices = await _flutterTts.getVoices;
     if (voices is List) {
       final voiceList = List<Map<dynamic, dynamic>>.from(voices);
       print('TTS Available voices: ${voiceList.length}');
 
-      // Find Turkish voices
-      final turkishVoices = voiceList.where((v) {
+      // Find Arabic voices
+      final arabicVoices = voiceList.where((v) {
         final locale = v['locale']?.toString().toLowerCase() ?? '';
-        return locale.contains('tr');
+        return locale.contains('ar');
       }).toList();
 
-      if (turkishVoices.isNotEmpty) {
-        // Prefer female voice for clarity
-        var selectedVoice = turkishVoices.firstWhere(
-          (v) {
-            final name = v['name']?.toString().toLowerCase() ?? '';
-            return name.contains('female') || name.contains('kadın');
-          },
-          orElse: () => turkishVoices.first,
-        );
+      if (arabicVoices.isNotEmpty) {
+        var selectedVoice = arabicVoices.first;
 
         final voiceName = selectedVoice['name']?.toString();
         if (voiceName != null) {
           await _flutterTts.setVoice({
             'name': voiceName,
-            'locale': selectedVoice['locale']?.toString() ?? 'tr-TR',
+            'locale': selectedVoice['locale']?.toString() ?? 'ar-SA',
           });
           print('TTS Selected voice: $voiceName');
         }
