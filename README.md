@@ -21,8 +21,7 @@ EchoVision is built on a **Clean Architecture** philosophy, ensuring a modular, 
 
 2.  **Inference Core (AI Processing Layer):**
     *   **Technology:** `tflite_flutter` for on-device inference.
-    *   **Function:** Operates **100% offline** for maximum privacy and zero latency. It analyzes throttled frames to detect objects and currency, outputting bounding boxes and labels.
-    *   **Smart Model Adaptation:** The app automatically detects the loaded TFLite model's properties (e.g., YOLOv8n vs. SSD MobileNet) and adjusts the image preprocessing and output parsing logic accordingly.
+    *   **Function:** Operates **100% offline** for maximum privacy and zero latency. It uses the **YOLO11n** model to analyze frames, outputting bounding boxes and labels.
 
 3.  **Sensory Feedback Engine (Output Layer):**
     *   **Audio Module (`flutter_tts`):** Converts detection labels (e.g., "chair", "car") into clear, localized speech. A **debounce** mechanism prevents repetitive announcements of the same object.
@@ -32,11 +31,9 @@ EchoVision is built on a **Clean Architecture** philosophy, ensuring a modular, 
 
 ## ✨ Key Features
 
-*   **Real-Time Object Detection:** Identifies over 80 common objects from the COCO dataset with high accuracy using models like **YOLOv8n** and **SSD MobileNet V2**.
-*   **Currency Recognition:** A custom TFLite model trained to recognize Turkish Lira banknotes.
+*   **Real-Time Object Detection:** Identifies over 80 common objects from the COCO dataset with high accuracy using the **YOLO11n** model.
 *   **Zero-UI Interface:** The application is controlled entirely through full-screen gestures:
-    *   **Swipe Right:** Activate Object Detection Mode.
-    *   **Swipe Left:** Activate Currency Recognition Mode.
+    *   **Swipe Right/Left:** Switch between Object Detection and Light Detection modes.
     *   **Double Tap:** Pause or resume all sensory feedback.
 *   **Multi-Modal Feedback:** Combines auditory announcements with haptic vibrations for a rich, intuitive user experience.
 *   **Cloud-Enhanced Scene Description:** Integrates with the **Gemini Vision API** to provide detailed, natural-language descriptions of complex scenes upon user request.
