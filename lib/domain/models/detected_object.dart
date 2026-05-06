@@ -31,11 +31,11 @@ class DetectedObject {
     return (centerX - 0.5).abs() < 0.2 && (centerY - 0.5).abs() < 0.2;
   }
 
-  /// Direction hint for the user (Turkish).
+  /// Direction hint for the user (English).
   String get directionHint {
     final cx = boundingBox.center.dx / frameWidth;
-    if (cx < 0.35) return 'solunuzda';
-    if (cx > 0.65) return 'sağınızda';
-    return 'önünüzde';
+    if (cx < 0.35) return 'on your left';
+    if (cx > 0.65) return 'on your right';
+    return 'in front of you';
   }
 }

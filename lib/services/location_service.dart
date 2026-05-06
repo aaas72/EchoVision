@@ -10,7 +10,7 @@ class LocationService {
     // ── 1. Check if location services are enabled ──
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      return 'Konum servisi etkin değil. Lütfen ayarlardan GPS\'i etkinleştirin.';
+      return 'Location service is disabled. Please enable GPS in settings.';
     }
 
     // ── 2. Check / request permission ──
@@ -18,11 +18,11 @@ class LocationService {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        return 'Konum izni verilmedi.';
+        return 'Location permission denied.';
       }
     }
     if (permission == LocationPermission.deniedForever) {
-      return 'Konum izni kalıcı olarak reddedildi. Lütfen uygulama ayarlarından izin verin.';
+      return 'Location permission permanently denied. Please enable it in app settings.';
     }
 
     // ── 3. Get current position (high accuracy for GPS) ──
@@ -35,7 +35,7 @@ class LocationService {
         ),
       );
     } catch (e) {
-      return 'Konum belirlenemedi. GPS\'in etkin olduğundan ve açık alanda olduğunuzdan emin olun.';
+      return 'Could not determine location. Ensure GPS is active and you are in an open area.';
     }
 
     // ── 4. Reverse geocode → address ──
@@ -47,7 +47,7 @@ class LocationService {
 
       if (placemarks.isNotEmpty) {
         final p = placemarks.first;
-        return _buildTurkishAddress(p, position);
+        return _buildEnglishAddress(p, position);
       }
     } catch (_) {
       // Reverse geocoding failed — fall back to coordinates
@@ -56,11 +56,11 @@ class LocationService {
     // ── 5. Fallback: raw coordinates ──
     final lat = position.latitude.toStringAsFixed(5);
     final lng = position.longitude.toStringAsFixed(5);
-    return 'Mevcut konumunuz: Enlem $lat, Boylam $lng.';
+    return 'Current location: Latitude $lat, Longitude $lng.';
   }
 
-  /// Build a natural Turkish address string from placemark data.
-  String _buildTurkishAddress(Placemark p, Position pos) {
+  /// Build a natural English address string from placemark data.
+  String _buildEnglishAddress(Placemark p, Position pos) {
     final parts = <String>[];
 
     // Street
@@ -69,7 +69,7 @@ class LocationService {
     }
     // Sub-locality (neighborhood / district)
     if (p.subLocality != null && p.subLocality!.isNotEmpty) {
-      parts.add('${p.subLocality} Mahallesi');
+      parts.add(p.subLocality!);
     }
     // Locality (city)
     if (p.locality != null && p.locality!.isNotEmpty) {
@@ -90,9 +90,9 @@ class LocationService {
     if (parts.isEmpty) {
       final lat = pos.latitude.toStringAsFixed(5);
       final lng = pos.longitude.toStringAsFixed(5);
-      return 'Mevcut konumunuz: Enlem $lat, Boylam $lng.';
+      return 'Current location: Latitude $lat, Longitude $lng.';
     }
 
-    return 'Mevcut konumunuz: ${parts.join(', ')}.';
+    return 'Current location: ${parts.join(', ')}.';
   }
 }

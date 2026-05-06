@@ -1,11 +1,23 @@
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui';
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:image/image.dart' as img;
 import 'package:flutter/services.dart' show rootBundle;
 import '../domain/models/detection_result.dart';
+
+/// Data passed to the background isolate for inference.
+class _InferenceData {
+  final int interpreterAddress;
+  final img.Image image;
+  final int inputSize;
+  final List<String> labels;
+
+  _InferenceData(this.interpreterAddress, this.image, this.inputSize, this.labels);
+}
 
 /// Optimized service for YOLO11n object detection.
 class YoloService {
@@ -33,8 +45,9 @@ class YoloService {
       
       print('YOLO11: Loaded ${_labels.length} labels');
 
-      // 2. Initialize TFLite Interpreter with 4 threads for speed
+      // 2. Initialize TFLite Interpreter with 4 threads
       final options = InterpreterOptions()..threads = 4;
+      
       _interpreter = await Interpreter.fromAsset(
         'assets/models/yolo11n.tflite',
         options: options,
@@ -75,7 +88,13 @@ class YoloService {
         decoded = img.copyRotate(decoded, angle: 270);
       }
 
-      return _processDecodedImage(decoded);
+      // Use compute to run inference in a background isolate
+      return await compute(_processImageInIsolate, _InferenceData(
+        _interpreter!.address,
+        decoded,
+        _inputSize,
+        _labels,
+      ));
     } catch (e) {
       print('YOLO11 Frame Inference Error: $e');
       return [];
@@ -132,39 +151,69 @@ class YoloService {
       final decoded = img.decodeImage(bytes);
       if (decoded == null) return [];
 
-      return _processDecodedImage(decoded);
+      // Use compute to run inference in a background isolate
+      return await compute(_processImageInIsolate, _InferenceData(
+        _interpreter!.address,
+        decoded,
+        _inputSize,
+        _labels,
+      ));
     } catch (e) {
       print('YOLO11 File Inference Error: $e');
       return [];
     }
   }
 
-  /// Core processing logic shared between file and frame analysis.
-  Future<List<DetectionResult>> _processDecodedImage(img.Image decoded) async {
-    // Preprocessing: Resize and Normalize
-    final resized = img.copyResize(decoded, width: _inputSize, height: _inputSize);
+  /// Entry point for background isolate inference.
+  static List<DetectionResult> _processImageInIsolate(_InferenceData data) {
+    final sw = Stopwatch()..start();
+    final interpreter = Interpreter.fromAddress(data.interpreterAddress);
     
-    // Efficient input preparation
-    final input = List.generate(1, (_) => List.generate(_inputSize, (y) => List.generate(_inputSize, (x) {
-      final p = resized.getPixel(x, y);
-      return [p.r / 255.0, p.g / 255.0, p.b / 255.0];
-    })));
+    // 1. Preprocessing: Resize
+    final resized = img.copyResize(data.image, width: data.inputSize, height: data.inputSize);
+    final resizeTime = sw.elapsedMilliseconds;
+    
+    // 2. Input preparation using TypedData
+    final input = Float32List(1 * data.inputSize * data.inputSize * 3);
+    var bufferIndex = 0;
+    for (var y = 0; y < data.inputSize; y++) {
+      for (var x = 0; x < data.inputSize; x++) {
+        final p = resized.getPixel(x, y);
+        input[bufferIndex++] = p.r / 255.0;
+        input[bufferIndex++] = p.g / 255.0;
+        input[bufferIndex++] = p.b / 255.0;
+      }
+    }
+    final preProcessTime = sw.elapsedMilliseconds;
 
-    final outputTensor = _interpreter!.getOutputTensor(0);
+    // 3. Inference
+    final outputTensor = interpreter.getOutputTensor(0);
     final shape = outputTensor.shape;
     final numChannels = shape[1]; 
     final numAnchors = shape[2];  
     
-    print('YOLO Tensor Shape: $shape');
-
     final output = List.filled(1 * numChannels * numAnchors, 0.0)
         .reshape([1, numChannels, numAnchors]);
 
-    _interpreter!.run(input, output);
+    interpreter.run(input.reshape([1, data.inputSize, data.inputSize, 3]), output);
+    final inferenceTime = sw.elapsedMilliseconds - preProcessTime;
 
-    final detections = <DetectionResult>[];
-    double maxConfidenceFound = 0.0;
+    // 4. Postprocessing (NMS)
+    final detections = _staticProcessOutputs(output, data.labels, data.inputSize);
+    final totalTime = sw.elapsedMilliseconds;
     
+    print('YOLO Isolate Performance: Total ${totalTime}ms | Resize ${resizeTime}ms | Pre ${preProcessTime-resizeTime}ms | Infer ${inferenceTime}ms');
+    
+    return detections;
+  }
+
+  /// Internal processing logic moved to static for Isolate compatibility.
+  static List<DetectionResult> _staticProcessOutputs(List<dynamic> output, List<String> labels, int inputSize) {
+    final detections = <DetectionResult>[];
+    final numChannels = output[0].length;
+    final numAnchors = output[0][0].length;
+    const confThreshold = 0.30;
+
     for (int i = 0; i < numAnchors; i++) {
       double maxScore = 0.0;
       int maxClassIndex = -1;
@@ -177,25 +226,21 @@ class YoloService {
         }
       }
 
-      if (maxScore > maxConfidenceFound) {
-        maxConfidenceFound = maxScore;
-      }
-
-      if (maxScore > _confThreshold) {
+      if (maxScore > confThreshold) {
         final cx = output[0][0][i];
         final cy = output[0][1][i];
         final w = output[0][2][i];
         final h = output[0][3][i];
 
-        final x1 = (cx - w / 2) / _inputSize;
-        final y1 = (cy - h / 2) / _inputSize;
-        final x2 = (cx + w / 2) / _inputSize;
-        final y2 = (cy + h / 2) / _inputSize;
+        final x1 = (cx - w / 2) / inputSize;
+        final y1 = (cy - h / 2) / inputSize;
+        final x2 = (cx + w / 2) / inputSize;
+        final y2 = (cy + h / 2) / inputSize;
 
-        if (maxClassIndex < _labels.length) {
+        if (maxClassIndex < labels.length) {
           detections.add(
             DetectionResult(
-              label: _translateToArabic(_labels[maxClassIndex]),
+              label: labels[maxClassIndex],
               confidence: maxScore,
               boundingBox: Rect.fromLTRB(x1, y1, x2, y2),
               source: DetectionSource.tflite,
@@ -205,17 +250,11 @@ class YoloService {
       }
     }
 
-    final finalDetections = _nms(detections);
-    if (finalDetections.isNotEmpty) {
-      print('Detected: ${finalDetections.map((d) => d.label).toList()}');
-    } else if (maxConfidenceFound > 0.05) {
-      print('No detection. Max confidence: ${maxConfidenceFound.toStringAsFixed(3)}');
-    }
-    return finalDetections;
+    return _staticNms(detections);
   }
 
-  /// Non-Maximum Suppression to remove overlapping boxes.
-  List<DetectionResult> _nms(List<DetectionResult> results) {
+  /// Helper for static NMS.
+  static List<DetectionResult> _staticNms(List<DetectionResult> results) {
     if (results.isEmpty) return [];
     results.sort((a, b) => b.confidence.compareTo(a.confidence));
 
@@ -227,7 +266,7 @@ class YoloService {
       finalResults.add(results[i]);
       for (int j = i + 1; j < results.length; j++) {
         if (isRemoved[j]) continue;
-        if (_calculateIoU(results[i].boundingBox, results[j].boundingBox) > _iouThreshold) {
+        if (_staticCalculateIoU(results[i].boundingBox, results[j].boundingBox) > 0.45) {
           isRemoved[j] = true;
         }
       }
@@ -235,7 +274,7 @@ class YoloService {
     return finalResults.take(10).toList();
   }
 
-  double _calculateIoU(Rect a, Rect b) {
+  static double _staticCalculateIoU(Rect a, Rect b) {
     final intersection = a.intersect(b);
     if (intersection.width <= 0 || intersection.height <= 0) return 0.0;
     final intersectionArea = intersection.width * intersection.height;
@@ -244,34 +283,6 @@ class YoloService {
     return intersectionArea / (areaA + areaB - intersectionArea);
   }
 
-  String _translateToArabic(String englishLabel) {
-    return _arabicMap[englishLabel.toLowerCase()] ?? englishLabel;
-  }
-
-  static const Map<String, String> _arabicMap = {
-    'person': 'شخص', 'bicycle': 'دراجة', 'car': 'سيارة', 'motorcycle': 'دراجة نارية',
-    'airplane': 'طائرة', 'bus': 'حافلة', 'train': 'قطار', 'truck': 'شاحنة',
-    'boat': 'قارب', 'traffic light': 'إشارة مرور', 'fire hydrant': 'صنبور حريق',
-    'stop sign': 'علامة قف', 'parking meter': 'عداد موقف', 'bench': 'مقعد',
-    'bird': 'طائر', 'cat': 'قطة', 'dog': 'كلب', 'horse': 'حصان', 'sheep': 'خروف',
-    'cow': 'بقرة', 'elephant': 'فيل', 'bear': 'دب', 'zebra': 'حمار وحشي', 'giraffe': 'زرافة',
-    'backpack': 'حقيبة ظهر', 'umbrella': 'شemsية', 'handbag': 'حقيبة يد',
-    'tie': 'ربطة عنق', 'suitcase': 'حقيبة سفر', 'frisbee': 'فرسبي', 'skis': 'زلاجات',
-    'snowboard': 'لوح تزلج', 'sports ball': 'كرة', 'kite': 'طائرة ورقية',
-    'baseball bat': 'مضرب بيسبول', 'baseball glove': 'قفاز بيسبول',
-    'skateboard': 'لوح تزلج', 'surfboard': 'لوح ركوب الأمواج', 'tennis racket': 'مضرب تنس',
-    'bottle': 'زجاجة', 'wine glass': 'كأس', 'cup': 'كوب', 'fork': 'شوكة',
-    'knife': 'سكين', 'spoon': 'ملعقة', 'bowl': 'وعاء', 'banana': 'موز', 'apple': 'تفاح',
-    'sandwich': 'شطيرة', 'orange': 'برتقال', 'broccoli': 'بروكلي', 'carrot': 'جزر',
-    'hot dog': 'نقانق', 'pizza': 'بيتزا', 'donut': 'دونات', 'cake': 'كعكة',
-    'chair': 'كرسي', 'couch': 'أريكة', 'potted plant': 'نبات',
-    'bed': 'يatak', 'dining table': 'طاولة طعام', 'toilet': 'مرحاض', 'tv': 'تلفاز',
-    'laptop': 'لابتوب', 'mouse': 'فأرة', 'remote': 'جهاز تحكم', 'keyboard': 'لوحة مفاتيح',
-    'cell phone': 'هاتف', 'microwave': 'مايكرويف', 'oven': 'فرن', 'toaster': 'محمصة',
-    'sink': 'مغسلة', 'refrigerator': 'ثلاجة', 'book': 'كتاب', 'clock': 'ساعة',
-    'vase': 'مزهرية', 'scissors': 'مقص', 'teddy bear': 'دب لعبة',
-    'hair dryer': 'مجفف شعر', 'toothbrush': 'فرشاة أسنان'
-  };
 
   Future<void> dispose() async {
     _interpreter?.close();

@@ -11,7 +11,7 @@ class TtsService {
 
   bool get isMuted => _isMuted;
 
-  /// Initialize TTS engine with Turkish language and optimized settings.
+  /// Initialize TTS engine with US English language and optimized settings.
   Future<void> initialize() async {
     // Try to use Google TTS engine for better quality
     final engines = await _flutterTts.getEngines;
@@ -35,63 +35,68 @@ class TtsService {
     // Slightly higher pitch for clearer voice (1.0 = normal, 1.1 = slightly higher)
     await _flutterTts.setPitch(1.05);
 
-    // Try Arabic variants in order of preference
-    final languages = await _flutterTts.getLanguages;
-    String selectedLang = 'en-US'; // fallback
+    // Set language to US English (MANDATORY FIRST)
+    await _flutterTts.setLanguage('en-US');
+    await _flutterTts.setSpeechRate(0.5);
+    await _flutterTts.setVolume(1.0);
+    await _flutterTts.setPitch(1.0);
 
-    if (languages is List) {
-      final langList = List<String>.from(languages.map((e) => e.toString()));
-      print('TTS Available languages: $langList');
-
-      // Try Arabic variants
-      for (final lang in ['ar-SA', 'ar', 'ara']) {
-        if (langList.any((l) => l.toLowerCase() == lang.toLowerCase())) {
-          selectedLang = lang;
-          break;
-        }
-      }
-    }
-
-    print('TTS Selected language: $selectedLang');
-    await _flutterTts.setLanguage(selectedLang);
-
-    // Slightly slower speech rate for better clarity
-    await _flutterTts.setSpeechRate(0.50);
-
-    // Try to select a voice if available
+    // Get all available voices to find a natural English one
     final voices = await _flutterTts.getVoices;
     if (voices is List) {
       final voiceList = List<Map<dynamic, dynamic>>.from(voices);
-      print('TTS Available voices: ${voiceList.length}');
-
-      // Find Arabic voices
-      final arabicVoices = voiceList.where((v) {
+      
+      // Filter for US English voices only
+      final englishVoices = voiceList.where((v) {
         final locale = v['locale']?.toString().toLowerCase() ?? '';
-        return locale.contains('ar');
+        return locale == 'en-us' || locale == 'en_us';
       }).toList();
 
-      if (arabicVoices.isNotEmpty) {
-        var selectedVoice = arabicVoices.first;
+      if (englishVoices.isNotEmpty) {
+        // Find a high-quality "network" voice or just a natural sounding one
+        final selectedVoice = englishVoices.firstWhere(
+          (v) => v['name']?.toString().toLowerCase().contains('network') ?? false,
+          orElse: () => englishVoices.first,
+        );
 
         final voiceName = selectedVoice['name']?.toString();
         if (voiceName != null) {
           await _flutterTts.setVoice({
             'name': voiceName,
-            'locale': selectedVoice['locale']?.toString() ?? 'ar-SA',
+            'locale': selectedVoice['locale']?.toString() ?? 'en-US',
           });
-          print('TTS Selected voice: $voiceName');
+          print('TTS Hard-Forced Voice: $voiceName');
         }
+      } else {
+        print('TTS Warning: No en-US voices found, staying with system default en-US');
       }
     }
 
     // Set completion handler to track TTS state
+    _flutterTts.setStartHandler(() {
+      if (onSpeechStart != null) onSpeechStart!();
+    });
+    
     _flutterTts.setCompletionHandler(() {
       print('TTS: Finished speaking');
+      if (onSpeechFinished != null) onSpeechFinished!();
     });
+    
+    _flutterTts.setProgressHandler((String text, int start, int end, String word) {
+      if (onProgress != null) {
+        onProgress!(text, start, end, word);
+      }
+    });
+
     _flutterTts.setErrorHandler((msg) {
       print('TTS Error: $msg');
     });
   }
+
+  /// Callbacks for progress tracking
+  void Function(String text, int start, int end, String word)? onProgress;
+  void Function()? onSpeechStart;
+  void Function()? onSpeechFinished;
 
   /// Speak the given [text] with debounce logic.
   /// Won't repeat the same text within [AppConstants.ttsDebounceSeconds].

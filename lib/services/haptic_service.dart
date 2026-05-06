@@ -40,4 +40,27 @@ class HapticService {
     if (!_hasVibrator) return;
     await Vibration.vibrate(duration: 50);
   }
+
+  /// Strong vibration for warnings/hazards.
+  Future<void> heavyImpact() async {
+    if (!_hasVibrator) return;
+    await Vibration.vibrate(duration: 300, amplitude: 255);
+  }
+
+  /// Start a rhythmic "thinking" vibration pattern.
+  void startProcessingHaptic() {
+    if (!_hasVibrator) return;
+    // Short pulse every 500ms
+    Vibration.vibrate(
+      pattern: [0, 40, 500],
+      repeat: 0,
+      amplitude: 128, // Moderate intensity
+    );
+  }
+
+  /// Stop all ongoing vibrations.
+  void stopProcessingHaptic() {
+    if (!_hasVibrator) return;
+    Vibration.cancel();
+  }
 }

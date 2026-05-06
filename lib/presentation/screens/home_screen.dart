@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -10,6 +11,7 @@ import '../../services/audio_feedback_service.dart';
 import '../../services/location_service.dart';
 import '../../services/light_detector_service.dart';
 import '../../services/orientation_service.dart';
+import '../../services/gemini_service.dart';
 import '../../core/enums/detection_mode.dart';
 import '../../domain/models/detection_result.dart';
 import '../widgets/focus_ring.dart';
@@ -46,6 +48,7 @@ class _HomeScreenState extends State<HomeScreen>
   final LocationService _locationService = LocationService();
   final LightDetectorService _lightDetectorService = LightDetectorService();
   final OrientationService _orientationService = OrientationService();
+  final GeminiService _geminiService = GeminiService();
 
   // ── State ──
   DetectionMode _currentMode = DetectionMode.object;
@@ -55,6 +58,8 @@ class _HomeScreenState extends State<HomeScreen>
   bool _isAnalyzing = false;
   bool _isFetchingLocation = false;
   String? _lastResult;
+  String? _currentSpokenWord;
+  bool _isSpeaking = false;
 
   // ── Live Detection ──
   List<DetectionResult> _detections = [];
@@ -116,10 +121,10 @@ class _HomeScreenState extends State<HomeScreen>
     if (!status.isGranted) {
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Kamera izni verilmedi. Lütfen ayarlardan izin verin.';
+        _errorMessage = 'Camera permission not granted. Please enable it in settings.';
       });
       await _ttsService.initialize();
-      await _ttsService.speakImmediate('Kamera izni gerekli');
+      await _ttsService.speakImmediate('Camera permission required');
       return;
     }
     await _initializeServices();
@@ -131,6 +136,34 @@ class _HomeScreenState extends State<HomeScreen>
       await _ttsService.initialize();
       await _hapticService.initialize();
       await _yoloService.initialize();
+      _geminiService.initialize();
+
+      // ── TTS Progress Logic ──
+      _ttsService.onProgress = (text, start, end, word) {
+        if (mounted) {
+          setState(() {
+            _currentSpokenWord = word;
+            _isSpeaking = true;
+          });
+        }
+      };
+      _ttsService.onSpeechStart = () {
+        if (mounted) {
+          _hapticService.stopProcessingHaptic();
+          setState(() {
+            _isSpeaking = true;
+          });
+        }
+      };
+      _ttsService.onSpeechFinished = () {
+        if (mounted) {
+          _hapticService.stopProcessingHaptic();
+          setState(() {
+            _currentSpokenWord = null;
+            _isSpeaking = false;
+          });
+        }
+      };
 
       setState(() => _isLoading = false);
 
@@ -138,8 +171,15 @@ class _HomeScreenState extends State<HomeScreen>
       await AudioFeedbackService.scanComplete();
       await Future.delayed(const Duration(milliseconds: 200));
       await _ttsService.speakImmediate(
-        'EchoVision hazır. Taramak için ekrana dokunun, mod değiştirmek için kaydırın, konumunuzu öğrenmek için aşağı kaydırın.',
+        'EchoVision ready. Tap to scan, swipe to change mode, swipe down for location.',
       );
+
+      // ── Verify Gemini API Connection ──
+      final isGeminiOk = await _geminiService.verifyConnection();
+      if (!isGeminiOk && mounted) {
+        print('Gemini API verification failed.');
+        _ttsService.speakImmediate('Warning: Cloud features are currently offline.');
+      }
 
       // ── Check accessibility service for volume button shortcut ──
       await _checkAccessibilityService();
@@ -167,7 +207,7 @@ class _HomeScreenState extends State<HomeScreen>
       });
       try {
         await _ttsService.initialize();
-        await _ttsService.speakImmediate('Kamera başlatılamadı.');
+        await _ttsService.speakImmediate('Camera failed to start.');
       } catch (_) {}
     }
   }
@@ -190,7 +230,7 @@ class _HomeScreenState extends State<HomeScreen>
     _idleTimer = Timer(const Duration(seconds: _kIdleGuidanceSeconds), () {
       if (!_isAnalyzing && !_ttsService.isMuted && mounted) {
         _ttsService.speakImmediate(
-          'Taramak için ekrana dokunun veya mod değiştirmek için sağa sola kaydırın.',
+          'Tap the screen to scan or swipe left and right to change modes.',
         );
       }
     });
@@ -207,7 +247,10 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _startLiveDetection() {
     _cameraService.startImageStream((image) async {
-      if (_isProcessingFrame || _currentMode != DetectionMode.object || _isAnalyzing) return;
+      if (_isProcessingFrame || _isAnalyzing) return;
+      
+      // Only run live detection for local modes
+      if (_currentMode != DetectionMode.object && _currentMode != DetectionMode.hazard) return;
       
       _isProcessingFrame = true;
       try {
@@ -216,6 +259,11 @@ class _HomeScreenState extends State<HomeScreen>
           setState(() {
             _detections = results;
           });
+
+          // In Hazard mode, provide urgent feedback for close objects
+          if (_currentMode == DetectionMode.hazard) {
+            _checkHazards(results);
+          }
         }
       } catch (e) {
         print('Frame processing error: $e');
@@ -223,6 +271,15 @@ class _HomeScreenState extends State<HomeScreen>
         _isProcessingFrame = false;
       }
     });
+  }
+
+  void _checkHazards(List<DetectionResult> results) {
+    final closeHazards = results.where((d) => d.isClose).toList();
+    if (closeHazards.isNotEmpty) {
+      final names = closeHazards.map((h) => h.label).toSet().join(', ');
+      _ttsService.speakImmediate('Warning: $names ahead.');
+      _hapticService.heavyImpact();
+    }
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -244,7 +301,10 @@ class _HomeScreenState extends State<HomeScreen>
     setState(() {
       _isAnalyzing = true;
       _lastResult = null;
+      _currentSpokenWord = null;
     });
+
+    _hapticService.startProcessingHaptic();
 
     // ── Audio-haptic sync: scan start ──
     await AudioFeedbackService.scanStart();
@@ -253,8 +313,9 @@ class _HomeScreenState extends State<HomeScreen>
     try {
       final imageFile = await _cameraService.takePicture();
       if (imageFile == null) {
+        _hapticService.stopProcessingHaptic();
         await AudioFeedbackService.error();
-        await _ttsService.speakImmediate('Fotoğraf çekilemedi');
+        await _ttsService.speakImmediate('Failed to take picture');
         setState(() => _isAnalyzing = false);
         return;
       }
@@ -266,16 +327,21 @@ class _HomeScreenState extends State<HomeScreen>
         final results = await _yoloService.analyzeImage(imageFile);
         
         if (results.isNotEmpty) {
-          // Speak the description which includes position (e.g. "Sandalye solda")
           result = results.map((d) => d.description).join(', ');
         } else {
-          result = 'Herhangi bir nesne algılanamadı.';
+          result = 'No objects detected.';
         }
+      } else if (_currentMode == DetectionMode.currency || 
+                 _currentMode == DetectionMode.medication || 
+                 _currentMode == DetectionMode.scene ||
+                 _currentMode == DetectionMode.hazard) {
+        // Cloud processing via Gemini (including detailed Hazard scan)
+        result = await _geminiService.describeImage(File(imageFile.path), _currentMode);
       } else {
-        // Light mode is handled at the start of _onTapToScan
         result = '';
       }
 
+      _hapticService.stopProcessingHaptic();
       print('Result: $result');
 
       // ── Audio-haptic sync: scan complete ──
@@ -285,9 +351,10 @@ class _HomeScreenState extends State<HomeScreen>
       _resultFadeController.forward();
       await _ttsService.speakImmediate(result);
     } catch (e) {
-      print('Analysis error: $e');
+      _hapticService.stopProcessingHaptic();
+      print('Scan Error: $e');
       await AudioFeedbackService.error();
-      await _ttsService.speakImmediate('Analiz sırasında hata oluştu');
+      await _ttsService.speakImmediate('An error occurred during analysis');
     } finally {
       setState(() => _isAnalyzing = false);
     }
@@ -298,7 +365,11 @@ class _HomeScreenState extends State<HomeScreen>
   // ══════════════════════════════════════════════════════════════
 
   static const _modeOrder = [
+    DetectionMode.hazard,
     DetectionMode.object,
+    DetectionMode.currency,
+    DetectionMode.medication,
+    DetectionMode.scene,
     DetectionMode.light,
   ];
 
@@ -345,11 +416,23 @@ class _HomeScreenState extends State<HomeScreen>
 
     String name;
     switch (mode) {
+      case DetectionMode.hazard:
+        name = 'Hazard Detection';
+        break;
       case DetectionMode.object:
-        name = 'Nesne Tanıma Modu';
+        name = 'Object Scanner';
+        break;
+      case DetectionMode.currency:
+        name = 'Currency Reader';
+        break;
+      case DetectionMode.medication:
+        name = 'Medication Assistant';
+        break;
+      case DetectionMode.scene:
+        name = 'Scene Description';
         break;
       case DetectionMode.light:
-        name = 'Işık Algılayıcı';
+        name = 'Light Detector';
         break;
       default:
         name = '';
@@ -367,7 +450,7 @@ class _HomeScreenState extends State<HomeScreen>
     final muted = _ttsService.toggleMute();
     AudioFeedbackService.uiClick();
     _hapticService.tick();
-    if (!muted) _ttsService.speakImmediate('Ses açıldı');
+    if (!muted) _ttsService.speakImmediate('Voice on');
     setState(() {});
   }
 
@@ -379,7 +462,7 @@ class _HomeScreenState extends State<HomeScreen>
       AudioFeedbackService.uiClick();
       _hapticService.tick();
       await _ttsService.speakImmediate(
-        _isFlashOn ? 'Flaş açıldı' : 'Flaş kapatıldı',
+        _isFlashOn ? 'Flash on' : 'Flash off',
       );
       setState(() {});
     } catch (_) {}
@@ -414,7 +497,7 @@ class _HomeScreenState extends State<HomeScreen>
 
     AudioFeedbackService.scanStart();
     _hapticService.tick();
-    await _ttsService.speakImmediate('Konumunuz belirleniyor...');
+    await _ttsService.speakImmediate('Locating...');
 
     try {
       final description =
@@ -425,7 +508,7 @@ class _HomeScreenState extends State<HomeScreen>
       await _ttsService.speakImmediate(description);
     } catch (e) {
       await AudioFeedbackService.error();
-      await _ttsService.speakImmediate('Konum belirlenemedi');
+      await _ttsService.speakImmediate('Could not determine location');
     } finally {
       setState(() => _isFetchingLocation = false);
     }
@@ -544,7 +627,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             const SizedBox(height: 8),
             Text(
-              'Akıllı Asistanınız',
+              'Your Smart Assistant',
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.5),
                 fontSize: 16,
@@ -618,7 +701,7 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _buildNoCameraState() {
     return const Center(
       child: Text(
-        'Kamera kullanılamıyor',
+        'Camera unavailable',
         style: TextStyle(
           color: Colors.white54,
           fontSize: 22,
@@ -714,7 +797,7 @@ class _HomeScreenState extends State<HomeScreen>
                 opacity: _hasInteracted ? 0.0 : 0.7,
                 duration: const Duration(milliseconds: 800),
                 child: Text(
-                  'Taramak için dokunun',
+                  'Tap to scan',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.6),
                     fontSize: 16,
@@ -736,8 +819,8 @@ class _HomeScreenState extends State<HomeScreen>
             child: Center(
               child: Text(
                 _isFetchingLocation
-                    ? 'Konum belirleniyor...'
-                    : 'Analiz ediliyor...',
+                    ? 'Locating...'
+                    : 'Analyzing...',
                 style: TextStyle(
                   color: _kAccentYellow.withValues(alpha: 0.9),
                   fontSize: 18,
@@ -802,7 +885,7 @@ class _HomeScreenState extends State<HomeScreen>
         if (_isFlashOn)
           _statusPill(
             icon: Icons.flashlight_on_rounded,
-            label: 'Flaş',
+            label: 'Flash',
             color: _kAccentYellow,
           ),
         if (_isFlashOn) const SizedBox(width: 8),
@@ -810,7 +893,7 @@ class _HomeScreenState extends State<HomeScreen>
         if (_ttsService.isMuted)
           _statusPill(
             icon: Icons.volume_off_rounded,
-            label: 'Sessiz',
+            label: 'Muted',
             color: Colors.red.shade400,
           ),
       ],
@@ -858,12 +941,28 @@ class _HomeScreenState extends State<HomeScreen>
     String label;
     IconData icon;
     switch (_currentMode) {
+      case DetectionMode.hazard:
+        label = 'Hazard Detection';
+        icon = Icons.warning_rounded;
+        break;
       case DetectionMode.object:
-        label = 'Nesne Tarayıcı';
+        label = 'Object Scanner';
         icon = Icons.center_focus_strong_rounded;
         break;
+      case DetectionMode.currency:
+        label = 'Currency Reader';
+        icon = Icons.payments_rounded;
+        break;
+      case DetectionMode.medication:
+        label = 'Medication Assistant';
+        icon = Icons.medical_services_rounded;
+        break;
+      case DetectionMode.scene:
+        label = 'Scene Description';
+        icon = Icons.landscape_rounded;
+        break;
       case DetectionMode.light:
-        label = 'Işık Algılayıcı';
+        label = 'Light Detector';
         icon = Icons.lightbulb_rounded;
         break;
     }
@@ -943,63 +1042,36 @@ class _HomeScreenState extends State<HomeScreen>
   // ══════════════════════════════════════════════════════════════
 
   Widget _buildResultCard() {
+    // Only show text when speaking, and only the current word
+    if (!_isSpeaking || _currentSpokenWord == null) return const SizedBox.shrink();
+
     return FadeTransition(
       opacity: _resultFadeAnim,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
-        decoration: BoxDecoration(
-          color: _kDeepBlack.withValues(alpha: 0.85),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: _kAccentCyan.withValues(alpha: 0.25),
-            width: 1.5,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: _kAccentCyan.withValues(alpha: 0.06),
-              blurRadius: 30,
-              spreadRadius: 0,
-            ),
-          ],
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+        // No background or border as requested
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.auto_awesome_rounded,
-                  color: _kAccentCyan.withValues(alpha: 0.7),
-                  size: 14,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'SONUÇ',
-                  style: TextStyle(
-                    color: _kAccentCyan.withValues(alpha: 0.7),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 2,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            // Result text — oversized, high-weight
+            // Result text — smaller, faded, subtitle style
             Text(
-              _lastResult!,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 26,
-                fontWeight: FontWeight.w700,
-                height: 1.5,
+              _currentSpokenWord!.toUpperCase(),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.6),
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 1.2,
+                height: 1.4,
+                shadows: [
+                  Shadow(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    offset: const Offset(0, 2),
+                    blurRadius: 4,
+                  ),
+                ],
               ),
               textAlign: TextAlign.center,
-              textDirection: TextDirection.ltr,
             ),
           ],
         ),

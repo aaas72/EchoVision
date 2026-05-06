@@ -20,6 +20,8 @@ dependencies:
   sensors_plus: ^6.1.1
   http: ^1.2.0
   path_provider: ^2.1.5
+  google_generative_ai: ^0.4.0
+  flutter_dotenv: ^5.2.1
 
 dev_dependencies:
   flutter_test:
@@ -30,6 +32,7 @@ flutter:
   uses-material-design: true
 
   assets:
+    - .env
     - assets/models/
     - assets/models/yolo11n.tflite
     - assets/models/labelmap.txt
