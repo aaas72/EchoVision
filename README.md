@@ -1,105 +1,67 @@
-# EchoVision: AI-Powered Auditory Assistant for the Visually Impaired
+# EchoVision: Advanced AI-Powered Assistant for the Visually Impaired
 
-EchoVision is a "Zero-UI" mobile application designed to empower visually impaired individuals by providing real-time auditory and haptic feedback about their surroundings. Built with Flutter and powered by on-device machine learning, it acts as a digital guide, enhancing safety and independence.
+EchoVision is a high-performance mobile application designed to provide real-time visual intelligence and auditory guidance for visually impaired individuals. It follows a "Zero-UI" philosophy, where the entire environment is translated into speech and tactile feedback through advanced computer vision and Google Gemini AI integration.
 
----
+## Project Overview
 
-## 🎯 Core Mission
+EchoVision acts as a real-time digital companion, allowing users to understand their surroundings, identify critical objects, read medication details, and detect hazards safely. The system combines local, ultra-fast on-device processing (YOLO11) with powerful cloud-based intelligence (Gemini Vision) to offer a comprehensive sensory experience.
 
-The primary goal of EchoVision is to translate the visual world into an intuitive sensory experience. By leveraging advanced computer vision and text-to-speech technology, the app helps users navigate their environment, identify objects, and recognize currency without needing to interact with a complex visual interface.
+## Intelligent Detection Modes
 
----
+The application features six specialized operating modes, easily switched via simple gestures:
 
-## 🏗️ System Architecture
+1. Hazard Detection: Identifies immediate physical dangers such as stairs, holes, or cables on the floor.
+2. Scene Description: Provides a high-level overview of the surroundings, layout, and spatial references.
+3. Medication Assistant: Reads medical packaging, names, and dosages with strict safety protocols.
+4. Currency Recognition: Identifies banknotes and coins to calculate total amounts in hand.
+5. Object Identification: Real-time, offline detection of common daily objects.
+6. Light Detection: Monitors ambient light levels and sources for environmental orientation.
 
-EchoVision is built on a **Clean Architecture** philosophy, ensuring a modular, scalable, and maintainable codebase. The system is divided into three main engines:
+## Core Technology Stack
 
-1.  **Vision Pipeline (Input Layer):**
-    *   **Technology:** Flutter `camera` plugin.
-    *   **Function:** Captures a real-time video stream from the device's camera.
-    *   **Optimization:** Implements **Frame Throttling**, processing only a few frames per second (e.g., 3 FPS) to conserve battery and prevent overheating, while still providing real-time feedback.
+- Framework: Flutter (High-performance cross-platform development).
+- Local AI Engine: YOLO11n (Real-time, offline object detection with zero latency).
+- Cloud AI Engine: Google Gemini 2.0 Flash (Advanced scene analysis and complex visual reasoning).
+- Speech Engine: Flutter TTS (Optimized for US English with high-quality network voices).
+- Haptics: Advanced vibration patterns for proximity alerts and system state feedback.
 
-2.  **Inference Core (AI Processing Layer):**
-    *   **Technology:** `tflite_flutter` for on-device inference.
-    *   **Function:** Operates **100% offline** for maximum privacy and zero latency. It uses the **YOLO11n** model to analyze frames, outputting bounding boxes and labels.
+## Advanced Features and Optimizations
 
-3.  **Sensory Feedback Engine (Output Layer):**
-    *   **Audio Module (`flutter_tts`):** Converts detection labels (e.g., "chair", "car") into clear, localized speech. A **debounce** mechanism prevents repetitive announcements of the same object.
-    *   **Haptic Module (`vibration`):** Translates object proximity and position into tactile feedback. A large, centered object triggers a stronger, more distinct vibration, alerting the user to immediate obstacles.
+- Smart Haptic Feedback: The system provides a rhythmic "thinking" vibration while processing cloud requests, ensuring the user knows the app is working.
+- Seamless Speech Synchronization: Visual subtitles are minimalist, faded, and perfectly synchronized word-by-word with the audio output.
+- Medical Safety Protocols: Strict instructions prevent the AI from guessing medication dosages; it explicitly warns the user if text is not 100% clear.
+- Data Efficiency: Intelligent image processing resizes and compresses captures to 1024px before transmission, reducing data usage by up to 95%.
+- Secure Architecture: API credentials are never hardcoded and are managed through protected environment variables (.env).
 
----
+## Interface and Gestures
 
-## ✨ Key Features
+EchoVision is designed to be used without looking at the screen:
 
-*   **Real-Time Object Detection:** Identifies over 80 common objects from the COCO dataset with high accuracy using the **YOLO11n** model.
-*   **Zero-UI Interface:** The application is controlled entirely through full-screen gestures:
-    *   **Swipe Right/Left:** Switch between Object Detection and Light Detection modes.
-    *   **Double Tap:** Pause or resume all sensory feedback.
-*   **Multi-Modal Feedback:** Combines auditory announcements with haptic vibrations for a rich, intuitive user experience.
-*   **Cloud-Enhanced Scene Description:** Integrates with the **Gemini Vision API** to provide detailed, natural-language descriptions of complex scenes upon user request.
-*   **Environmental Awareness:** Uses device sensors (`sensors_plus`, `geolocator`) to provide context like location, orientation, and ambient light levels.
+- Single Tap: Capture and analyze (in Cloud modes).
+- Horizontal Swipe: Switch between detection modes.
+- Vertical Swipe: Get current location and environment status.
+- Double Tap: Toggle Mute/Unmute for audio feedback.
+- Long Press: Toggle camera flash for low-light environments.
 
----
+## Architecture and Security
 
-## 📂 Project Structure
+The project follows Clean Architecture principles to ensure modularity and reliability:
 
-```
-lib/
-├── main.dart                  # Application entry point
-├── core/                      # Core constants, enums, and utilities
-├── domain/                    # Business logic, entities, and use cases
-├── presentation/              # UI Layer (Screens, Widgets, and State Management)
-│   └── screens/
-│       └── home_screen.dart   # Main camera view and gesture handler
-└── services/                  # Isolated services for specific functionalities
-    ├── object_detection_service.dart
-    ├── currency_detection_service.dart
-    ├── tts_service.dart
-    ├── camera_service.dart
-    └── haptic_service.dart
-```
+- Domain Layer: Contains the core business logic and detection entities.
+- Data/Service Layer: Handles camera hardware, TTS engine, and API communication.
+- Presentation Layer: Manages the camera preview and gesture-driven state machine.
 
----
+Security is a priority; the application uses flutter_dotenv to handle sensitive API keys, ensuring that credentials are never leaked to version control systems.
 
-## 🛠️ Getting Started
+## Getting Started
 
-### Prerequisites
-*   Flutter SDK (3.6.0 or higher)
-*   An Android or iOS physical device (for camera and sensor access)
-*   Android Studio / VS Code
+1. Clone the repository.
+2. Run 'flutter pub get' to install dependencies.
+3. Create a '.env' file in the root directory.
+4. Add your API key: GEMINI_API_KEY=your_key_here.
+5. Ensure your AndroidManifest.xml includes INTERNET permissions for cloud features.
+6. Build and run in Release mode for optimal performance.
 
-### Installation
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/aaas72/EchoVision.git
-    cd EchoVision
-    ```
+## License
 
-2.  **Install dependencies:**
-    ```bash
-    flutter pub get
-    ```
-
-3.  **Configure Models:**
-    *   Place your primary object detection model at `assets/models/detect.tflite`.
-    *   The application will automatically adapt to the model's specific input/output signature.
-
-4.  **Run the application:**
-    ```bash
-    flutter run
-    ```
-
----
-
-## 🚀 Future Roadmap
-
-*   **Depth Estimation:** Integrate depth-sensing capabilities to announce the *distance* to detected objects (e.g., "Car, 5 meters away").
-*   **Optical Character Recognition (OCR):** Add a module to read text from signs, documents, and product labels.
-*   **Advanced Navigation Mode:** Provide turn-by-turn walking directions that are integrated with real-time obstacle avoidance.
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
+This project is licensed under the MIT License.
