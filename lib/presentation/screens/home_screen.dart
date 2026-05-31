@@ -127,8 +127,15 @@ class _HomeScreenState extends State<HomeScreen>
   // ══════════════════════════════════════════════════════════════
 
   Future<void> _requestPermissionsAndInit() async {
-    final status = await Permission.camera.request();
-    if (!status.isGranted) {
+    final statuses = await [
+      Permission.camera,
+      Permission.microphone,
+    ].request();
+
+    final cameraGranted = statuses[Permission.camera]?.isGranted ?? false;
+    final micGranted = statuses[Permission.microphone]?.isGranted ?? false;
+
+    if (!cameraGranted) {
       setState(() {
         _isLoading = false;
         _errorMessage = 'Camera permission not granted. Please enable it in settings.';
@@ -137,6 +144,11 @@ class _HomeScreenState extends State<HomeScreen>
       await _ttsService.speakImmediate('Camera permission required');
       return;
     }
+
+    if (!micGranted) {
+      print('Microphone permission denied. Voice commands will have restricted speech engine access.');
+    }
+
     await _initializeServices();
   }
 
@@ -524,13 +536,25 @@ class _HomeScreenState extends State<HomeScreen>
       _isListeningVoice = true;
     });
 
+    if (!_voiceCommandService.isInitialized) {
+      final ok = await _voiceCommandService.initialize();
+      if (!ok) {
+        setState(() {
+          _isListeningVoice = false;
+        });
+        await _ttsService.speakImmediate("Speech recognition is not supported on this device.");
+        return;
+      }
+    }
+
     if (isQASession) {
       await _ttsService.speakImmediate("Ready for your question. Speak now.");
     } else {
       await _ttsService.speakImmediate("Listening for command. Speak now.");
     }
 
-    await Future.delayed(const Duration(milliseconds: 1500));
+    // Increased delay to 2500ms so the TTS phrase completes speaking before the microphone turns on
+    await Future.delayed(const Duration(milliseconds: 2500));
 
     await _voiceCommandService.startListening(
       onCommandMatched: (command, rawText) async {
