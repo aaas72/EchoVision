@@ -29,7 +29,7 @@ class CameraService {
 
     _controller = CameraController(
       backCamera,
-      ResolutionPreset.medium, // Optimized for live inference
+      ResolutionPreset.high, // Crystal clear preview and high-fidelity OCR for Gemini, resized in background isolate for YOLO
       enableAudio: false,
       imageFormatGroup: ImageFormatGroup.bgra8888,
     );
