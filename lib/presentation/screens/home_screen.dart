@@ -231,8 +231,8 @@ class _HomeScreenState extends State<HomeScreen>
       // ── Start live detection ──
       _startLiveDetection();
 
-      // ── Mute voice by default as requested ──
-      _ttsService.toggleMute();
+      // ── Voice output is active by default ──
+
 
       // ── Orientation guidance DISABLED for now ──
       // _orientationService.onGuidance = (msg) {
