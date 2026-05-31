@@ -22,6 +22,9 @@ dependencies:
   path_provider: ^2.1.5
   google_generative_ai: ^0.4.0
   flutter_dotenv: ^5.2.1
+  speech_to_text: ^7.4.0
+  battery_plus: ^6.1.1
+
 
 dev_dependencies:
   flutter_test:

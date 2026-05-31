@@ -13,6 +13,13 @@ class GeminiService {
 
   bool get isInitialized => _isInitialized;
 
+  Uint8List? _lastImageBytes;
+  final List<Content> _chatHistory = [];
+
+  Uint8List? get lastImageBytes => _lastImageBytes;
+  bool get hasActiveSession => _lastImageBytes != null;
+
+
   void initialize() {
     final apiKey = dotenv.get('GEMINI_API_KEY', fallback: '');
     
@@ -77,6 +84,14 @@ class GeminiService {
             resultText = resultText[0].toUpperCase() + resultText.substring(1);
           }
 
+          // Initialize visual Q&A session
+          _lastImageBytes = compressedBytes;
+          _chatHistory.clear();
+          _chatHistory.add(Content.multi([
+            DataPart('image/jpeg', compressedBytes),
+            TextPart('This is the image we are discussing. Your initial description of the image was: "$resultText". Keep this context in mind for any follow-up questions.'),
+          ]));
+
           print('Gemini Response (Cleaned): $resultText');
           return resultText;
         } catch (e) {
@@ -129,5 +144,39 @@ class GeminiService {
       print('Gemini Verification Failed: $e');
       return false;
     }
+  }
+
+  /// Ask a follow-up question about the last analyzed image.
+  Future<String> askFollowUp(String question) async {
+    if (!_isInitialized) return 'Gemini service not initialized.';
+    if (_lastImageBytes == null) return 'Please scan an image first.';
+
+    try {
+      _chatHistory.add(Content.text(
+        '$question. IMPORTANT: Keep your response short, clear, and direct. Do not use markdown or emojis.'
+      ));
+
+      final response = await _model.generateContent(_chatHistory);
+      String resultText = response.text ?? 'No reply received.';
+
+      resultText = resultText
+          .replaceAll(RegExp(r'[\*\#\_]'), '') // Remove markdown symbols
+          .replaceAll(RegExp(r'\s+'), ' ')     // Normalize spaces
+          .trim();
+
+      // Store in chat history
+      _chatHistory.add(Content.model([TextPart(resultText)]));
+      print('Gemini Q&A: $resultText');
+      return resultText;
+    } catch (e) {
+      print('Gemini Q&A Error: $e');
+      return 'Sorry, I could not analyze the question.';
+    }
+  }
+
+  /// Reset the current Visual Q&A conversation session.
+  void clearSession() {
+    _lastImageBytes = null;
+    _chatHistory.clear();
   }
 }

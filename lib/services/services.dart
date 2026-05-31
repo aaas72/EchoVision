@@ -7,3 +7,5 @@ export 'location_service.dart';
 export 'light_detector_service.dart';
 export 'orientation_service.dart';
 export 'vision_pipeline_service.dart';
+export 'voice_command_service.dart';
+

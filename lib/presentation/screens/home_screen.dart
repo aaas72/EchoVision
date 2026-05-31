@@ -12,9 +12,12 @@ import '../../services/location_service.dart';
 import '../../services/light_detector_service.dart';
 import '../../services/orientation_service.dart';
 import '../../services/gemini_service.dart';
+import '../../services/voice_command_service.dart';
+import 'package:battery_plus/battery_plus.dart';
 import '../../core/enums/detection_mode.dart';
 import '../../domain/models/detection_result.dart';
 import '../widgets/focus_ring.dart';
+
 
 // ══════════════════════════════════════════════════════════════
 // ██  DESIGN TOKENS
@@ -49,9 +52,16 @@ class _HomeScreenState extends State<HomeScreen>
   final LightDetectorService _lightDetectorService = LightDetectorService();
   final OrientationService _orientationService = OrientationService();
   final GeminiService _geminiService = GeminiService();
+  final VoiceCommandService _voiceCommandService = VoiceCommandService();
+  final Battery _battery = Battery();
 
   // ── State ──
   DetectionMode _currentMode = DetectionMode.object;
+  bool _isListeningVoice = false;
+  bool _isLowBattery = false;
+  int _batteryLevel = 100;
+  DateTime? _lastFrameTime;
+
   bool _isLoading = true;
   String? _errorMessage;
   bool _isFlashOn = false;
@@ -137,6 +147,25 @@ class _HomeScreenState extends State<HomeScreen>
       await _hapticService.initialize();
       await _yoloService.initialize();
       _geminiService.initialize();
+      await _voiceCommandService.initialize();
+
+      // Get initial battery status
+      try {
+        _batteryLevel = await _battery.batteryLevel;
+        _isLowBattery = _batteryLevel < 20;
+        _battery.onBatteryStateChanged.listen((state) async {
+          final level = await _battery.batteryLevel;
+          if (mounted) {
+            setState(() {
+              _batteryLevel = level;
+              _isLowBattery = level < 20;
+            });
+          }
+        });
+      } catch (e) {
+        print('Battery init failed: $e');
+      }
+
 
       // ── TTS Progress Logic ──
       _ttsService.onProgress = (text, start, end, word) {
@@ -251,6 +280,16 @@ class _HomeScreenState extends State<HomeScreen>
       
       // Only run live detection for local modes
       if (_currentMode != DetectionMode.object && _currentMode != DetectionMode.hazard) return;
+
+      // Battery-Adaptive Frame Throttling
+      final now = DateTime.now();
+      final throttleMs = _isLowBattery ? 1000 : 333;
+      if (_lastFrameTime != null && 
+          now.difference(_lastFrameTime!).inMilliseconds < throttleMs) {
+        return;
+      }
+      _lastFrameTime = now;
+
       
       _isProcessingFrame = true;
       try {
@@ -276,8 +315,8 @@ class _HomeScreenState extends State<HomeScreen>
   void _checkHazards(List<DetectionResult> results) {
     final closeHazards = results.where((d) => d.isClose).toList();
     if (closeHazards.isNotEmpty) {
-      final names = closeHazards.map((h) => h.label).toSet().join(', ');
-      _ttsService.speakImmediate('Warning: $names ahead.');
+      final names = closeHazards.map((h) => "${h.label} ${h.horizontalPosition}").toSet().join(', ');
+      _ttsService.speakImmediate('Warning: $names.');
       _hapticService.heavyImpact();
     }
   }
@@ -331,8 +370,19 @@ class _HomeScreenState extends State<HomeScreen>
         } else {
           result = 'No objects detected.';
         }
-      } else if (_currentMode == DetectionMode.currency || 
-                 _currentMode == DetectionMode.medication || 
+      } else if (_currentMode == DetectionMode.currency) {
+        final isOnline = await _geminiService.verifyConnection();
+        if (!isOnline) {
+          final localDetections = await _yoloService.analyzeImage(imageFile);
+          if (localDetections.isNotEmpty) {
+            result = "Offline Mode: Detected a banknote-like shape. Please reconnect to internet to verify Turkish Lira denomination.";
+          } else {
+            result = "Offline Mode: No bill detected. Reconnect or place the bill clearly in front of the camera.";
+          }
+        } else {
+          result = await _geminiService.describeImage(File(imageFile.path), _currentMode);
+        }
+      } else if (_currentMode == DetectionMode.medication || 
                  _currentMode == DetectionMode.scene ||
                  _currentMode == DetectionMode.hazard) {
         // Cloud processing via Gemini (including detailed Hazard scan)
@@ -409,6 +459,8 @@ class _HomeScreenState extends State<HomeScreen>
       _lastResult = null;
     });
     _resultFadeController.reset();
+    _geminiService.clearSession();
+
 
     // ── Audio-haptic sync: mode switch click ──
     AudioFeedbackService.uiClick();
@@ -456,16 +508,116 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _onLongPress() async {
     _onUserInteraction();
-    try {
-      await _cameraService.toggleFlash();
-      _isFlashOn = !_isFlashOn;
-      AudioFeedbackService.uiClick();
-      _hapticService.tick();
-      await _ttsService.speakImmediate(
-        _isFlashOn ? 'Flash on' : 'Flash off',
-      );
-      setState(() {});
-    } catch (_) {}
+    if (_isListeningVoice) {
+      await _voiceCommandService.stopListening();
+      setState(() => _isListeningVoice = false);
+      return;
+    }
+
+    final isQASession = _geminiService.hasActiveSession;
+    
+    // Play listen start sound
+    await AudioFeedbackService.scanStart();
+    _hapticService.tick();
+
+    setState(() {
+      _isListeningVoice = true;
+    });
+
+    if (isQASession) {
+      await _ttsService.speakImmediate("Ready for your question. Speak now.");
+    } else {
+      await _ttsService.speakImmediate("Listening for command. Speak now.");
+    }
+
+    await Future.delayed(const Duration(milliseconds: 1500));
+
+    await _voiceCommandService.startListening(
+      onCommandMatched: (command, rawText) async {
+        if (!mounted) return;
+        
+        await AudioFeedbackService.scanComplete();
+
+        if (isQASession && command == AppVoiceCommand.unknown) {
+          // Visual Q&A follow-up question
+          setState(() => _isAnalyzing = true);
+          await _ttsService.speakImmediate("Asking Gemini about: $rawText");
+          final response = await _geminiService.askFollowUp(rawText);
+          setState(() {
+            _isAnalyzing = false;
+            _lastResult = response;
+          });
+          _resultFadeController.forward();
+          await _ttsService.speakImmediate(response);
+          return;
+        }
+
+        // Handle standard voice commands
+        switch (command) {
+          case AppVoiceCommand.scan:
+            await _onTapToScan();
+            break;
+          case AppVoiceCommand.modeObject:
+            _switchMode(DetectionMode.object);
+            break;
+          case AppVoiceCommand.modeHazard:
+            _switchMode(DetectionMode.hazard);
+            break;
+          case AppVoiceCommand.modeCurrency:
+            _switchMode(DetectionMode.currency);
+            break;
+          case AppVoiceCommand.modeMedication:
+            _switchMode(DetectionMode.medication);
+            break;
+          case AppVoiceCommand.modeScene:
+            _switchMode(DetectionMode.scene);
+            break;
+          case AppVoiceCommand.modeLight:
+            _switchMode(DetectionMode.light);
+            break;
+          case AppVoiceCommand.whereAmI:
+            await _fetchLocation();
+            break;
+          case AppVoiceCommand.direction:
+            await _ttsService.speakImmediate(_orientationService.cameraDescription);
+            break;
+          case AppVoiceCommand.mute:
+            if (!_ttsService.isMuted) {
+              _ttsService.toggleMute();
+              await _ttsService.speakImmediate("Muted");
+            }
+            break;
+          case AppVoiceCommand.unmute:
+            if (_ttsService.isMuted) {
+              _ttsService.toggleMute();
+              await _ttsService.speakImmediate("Voice on");
+            }
+            break;
+          case AppVoiceCommand.help:
+            await _ttsService.speakImmediate(
+              "Say: Scan to capture, Mode object, Mode hazard, Mode currency, Where am I, or Compass."
+            );
+            break;
+          default:
+            // Toggle flash as fallback to original requirement
+            try {
+              await _cameraService.toggleFlash();
+              _isFlashOn = !_isFlashOn;
+              await _ttsService.speakImmediate(
+                _isFlashOn ? 'Flash on' : 'Flash off',
+              );
+            } catch (_) {}
+            break;
+        }
+      },
+      onStopListening: () {
+        if (mounted) {
+          setState(() {
+            _isListeningVoice = false;
+          });
+        }
+      },
+    );
   }
 
   // ══════════════════════════════════════════════════════════════
