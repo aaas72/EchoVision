@@ -29,9 +29,9 @@ class CameraService {
 
     _controller = CameraController(
       backCamera,
-      ResolutionPreset.high, // Crystal clear preview and high-fidelity OCR for Gemini, resized in background isolate for YOLO
+      ResolutionPreset.high, // Enforce high-definition (usually 1080p, 16:9) for constant crisp dimensions on all devices
       enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.bgra8888,
+      imageFormatGroup: ImageFormatGroup.yuv420, // Universal YUV420 format for ultra-stable Android performance
     );
 
     await _controller!.initialize();
