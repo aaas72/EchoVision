@@ -37,9 +37,13 @@ class TtsService {
 
     // Set language to US English (MANDATORY FIRST)
     await _flutterTts.setLanguage('en-US');
-    await _flutterTts.setSpeechRate(0.5);
+    
+    // Slow down speech slightly for a relaxed, clear, and reassuring human pace (0.43 - 0.45 is natural)
+    await _flutterTts.setSpeechRate(0.44);
     await _flutterTts.setVolume(1.0);
-    await _flutterTts.setPitch(1.0);
+    
+    // Warm tone: slightly lower pitch (0.95 - 1.0) sounds much less robotic and more companion-like
+    await _flutterTts.setPitch(0.98);
 
     // Get all available voices to find a natural English one
     final voices = await _flutterTts.getVoices;
@@ -53,9 +57,15 @@ class TtsService {
       }).toList();
 
       if (englishVoices.isNotEmpty) {
-        // Find a high-quality "network" voice or just a natural sounding one
+        // Prioritize ultra-realistic WaveNet, Neural, or Natural cloud voices
         final selectedVoice = englishVoices.firstWhere(
-          (v) => v['name']?.toString().toLowerCase().contains('network') ?? false,
+          (v) {
+            final name = v['name']?.toString().toLowerCase() ?? '';
+            return name.contains('wavenet') || 
+                   name.contains('neural') || 
+                   name.contains('natural') || 
+                   name.contains('network');
+          },
           orElse: () => englishVoices.first,
         );
 
@@ -65,7 +75,7 @@ class TtsService {
             'name': voiceName,
             'locale': selectedVoice['locale']?.toString() ?? 'en-US',
           });
-          print('TTS Hard-Forced Voice: $voiceName');
+          print('TTS Hard-Forced Premium Voice: $voiceName');
         }
       } else {
         print('TTS Warning: No en-US voices found, staying with system default en-US');

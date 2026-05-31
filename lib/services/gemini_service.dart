@@ -117,20 +117,25 @@ class GeminiService {
   }
 
   /// Returns specialized prompts for different detection modes.
+  /// Formulated to produce warm, humane, conversational, and alert speech outputs.
   String _getPromptForMode(DetectionMode mode) {
-    const commonInstructions = ' IMPORTANT: Act as an objective, highly efficient visual assistant for a blind person. Give only the facts. Do not use any markdown (asterisks, hashtags). Do not say "In this image" or "I see". Be brief and clear.';
+    const avoidMarkdown = ' IMPORTANT: Speak naturally as a human companion. Do not use any markdown symbols (like asterisks, hashtags, bullet lists). Speak in clear, fluent sentences without robotic prefixes.';
 
     switch (mode) {
-      case DetectionMode.currency:
-        return 'State the total amount of money and denominations. $commonInstructions';
-      case DetectionMode.medication:
-        return 'Identify the medicine name. Read the dosage ONLY if it is clearly visible. If you cannot read it clearly, explicitly say: "I cannot read the dosage clearly, please ask for help". Do NOT guess. $commonInstructions';
-      case DetectionMode.scene:
-        return 'Describe the path and surroundings layout (left, center, right) and any obstacles. $commonInstructions';
       case DetectionMode.hazard:
-        return 'Warn about any immediate hazards like stairs, holes, or cables. $commonInstructions';
+        return 'Act as a protective, alert human guide warning a blind friend about physical dangers. If you detect immediate hazards (like stairs, cables on floor, holes, clutter, or sharp corners), speak in a realistic, urgent, and protective tone. For example: "Watch out! There is a cable on the floor right in front of you." or "Caution! There are steps descending on your left, please slow down." Be direct and helpful. $avoidMarkdown';
+      
+      case DetectionMode.scene:
+        return 'Act as a warm, friendly human companion describing the room/surroundings to a blind friend. Speak in a conversational, comforting, and descriptive tone. For example: "Looking around, you are in a brightly lit room. In front of you, there is a large sofa..." or "Let\'s see what is around you. To your right, there is a door...". Describe the layout naturally (left, center, right). $avoidMarkdown';
+      
+      case DetectionMode.currency:
+        return 'Act as a friendly, reassuring human assistant counting money. State the total amount and the specific bills warmly and clearly. For example: "You are holding a total of 150 Liras. That is a 100 Lira bill and a 50 Lira bill." or "You have a single 20 Lira bill in your hand." $avoidMarkdown';
+      
+      case DetectionMode.medication:
+        return 'Act as a caring, extremely safety-oriented medical assistant checking a package. Guide the user gently. For example: "Let me check this medicine for you. This is Aspirin, 100 milligrams." Read the dosage ONLY if it is 100% clearly visible. If you cannot read it clearly, explicitly warn them: "I can see the medicine name is Ibuprofen, but the dosage is a bit blurry. Please ask someone to check this for you to be safe." Do not guess. $avoidMarkdown';
+      
       default:
-        return 'Describe the objects or texؤمسt in front of the camera clearly. $commonInstructions';
+        return 'Describe the objects or text in front of the camera clearly and warmly, like a friendly companion describing things. $avoidMarkdown';
     }
   }
 

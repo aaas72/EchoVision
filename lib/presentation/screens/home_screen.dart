@@ -316,7 +316,7 @@ class _HomeScreenState extends State<HomeScreen>
     final closeHazards = results.where((d) => d.isClose).toList();
     if (closeHazards.isNotEmpty) {
       final names = closeHazards.map((h) => "${h.label} ${h.horizontalPosition}").toSet().join(', ');
-      _ttsService.speakImmediate('Warning: $names.');
+      _ttsService.speakImmediate('Watch out! There is a $names right in front of you.');
       _hapticService.heavyImpact();
     }
   }
