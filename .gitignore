@@ -42,3 +42,4 @@ app.*.map.json
 # Environment variables (SECURITY)
 .env
 .env.*
+android/build/

@@ -1,6 +1,4 @@
 import 'dart:io';
-import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
@@ -27,8 +25,6 @@ class YoloService {
 
   // YOLO11n default input size
   static const int _inputSize = 640;
-  static const double _confThreshold = 0.30;
-  static const double _iouThreshold = 0.45;
 
   bool get isInitialized => _isInitialized;
 
@@ -70,6 +66,12 @@ class YoloService {
       
       if (image.format.group == ImageFormatGroup.yuv420) {
         decoded = _convertYUV420ToImage(image);
+      } else if (image.format.group == ImageFormatGroup.jpeg) {
+        // JPEG stream: decode directly from compressed bytes
+        final jpegBytes = image.planes.first.bytes;
+        final jpegDecoded = img.decodeJpg(jpegBytes);
+        if (jpegDecoded == null) return [];
+        decoded = jpegDecoded;
       } else {
         final plane = image.planes.first;
         decoded = img.Image.fromBytes(

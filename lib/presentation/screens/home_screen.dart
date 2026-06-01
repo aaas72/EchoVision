@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../services/camera_service.dart';
 import '../../services/tts_service.dart';
@@ -12,11 +11,18 @@ import '../../services/location_service.dart';
 import '../../services/light_detector_service.dart';
 import '../../services/orientation_service.dart';
 import '../../services/gemini_service.dart';
-import '../../services/voice_command_service.dart';
+import '../../services/lira_detector_service.dart';
 import 'package:battery_plus/battery_plus.dart';
 import '../../core/enums/detection_mode.dart';
 import '../../domain/models/detection_result.dart';
 import '../widgets/focus_ring.dart';
+import '../widgets/splash_screen.dart';
+import '../widgets/camera_preview_box.dart';
+import '../widgets/mode_pill.dart';
+import '../widgets/result_card.dart';
+import '../widgets/bounding_boxes.dart';
+import '../widgets/top_status_bar.dart';
+
 
 
 // ══════════════════════════════════════════════════════════════
@@ -24,7 +30,6 @@ import '../widgets/focus_ring.dart';
 // ══════════════════════════════════════════════════════════════
 const _kDeepBlack = Color(0xFF0A0A0A);
 const _kAccentYellow = Color(0xFFFFD600);
-const _kAccentCyan = Color(0xFF00E5FF);
 const _kIdleGuidanceSeconds = 120; // 2 minutes
 
 /// Main screen: edge-to-edge camera with premium, blind-first UI.
@@ -52,12 +57,11 @@ class _HomeScreenState extends State<HomeScreen>
   final LightDetectorService _lightDetectorService = LightDetectorService();
   final OrientationService _orientationService = OrientationService();
   final GeminiService _geminiService = GeminiService();
-  final VoiceCommandService _voiceCommandService = VoiceCommandService();
+  final LiraDetectorService _liraDetectorService = LiraDetectorService();
   final Battery _battery = Battery();
 
   // ── State ──
   DetectionMode _currentMode = DetectionMode.object;
-  bool _isListeningVoice = false;
   bool _isLowBattery = false;
   int _batteryLevel = 100;
   DateTime? _lastFrameTime;
@@ -84,8 +88,6 @@ class _HomeScreenState extends State<HomeScreen>
   late Animation<double> _resultFadeAnim;
   late AnimationController _modeSwitchController;
   late Animation<double> _modeSwitchAnim;
-  late AnimationController _splashFadeController;
-  late Animation<double> _splashFadeAnim;
 
   @override
   void initState() {
@@ -110,15 +112,6 @@ class _HomeScreenState extends State<HomeScreen>
       curve: Curves.easeInOut,
     );
 
-    _splashFadeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
-    _splashFadeAnim = CurvedAnimation(
-      parent: _splashFadeController,
-      curve: Curves.easeIn,
-    );
-
     _requestPermissionsAndInit();
   }
 
@@ -129,11 +122,9 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> _requestPermissionsAndInit() async {
     final statuses = await [
       Permission.camera,
-      Permission.microphone,
     ].request();
 
     final cameraGranted = statuses[Permission.camera]?.isGranted ?? false;
-    final micGranted = statuses[Permission.microphone]?.isGranted ?? false;
 
     if (!cameraGranted) {
       setState(() {
@@ -143,10 +134,6 @@ class _HomeScreenState extends State<HomeScreen>
       await _ttsService.initialize();
       await _ttsService.speakImmediate('Camera permission required');
       return;
-    }
-
-    if (!micGranted) {
-      print('Microphone permission denied. Voice commands will have restricted speech engine access.');
     }
 
     await _initializeServices();
@@ -159,7 +146,20 @@ class _HomeScreenState extends State<HomeScreen>
       await _hapticService.initialize();
       await _yoloService.initialize();
       _geminiService.initialize();
-      await _voiceCommandService.initialize();
+      await _liraDetectorService.initialize();
+      
+      // Initialize offline speech service with download progress tracking (DISABLED per user request)
+      // await _voiceCommandService.initialize(
+      //   onDownloadProgress: (progress, status) {
+      //     if (mounted) {
+      //       setState(() {
+      //         _isVoiceDownloading = progress < 1.0 && progress >= 0.0;
+      //         _voiceDownloadProgress = progress;
+      //         _voiceDownloadStatus = status;
+      //       });
+      //     }
+      //   },
+      // );
 
       // Get initial battery status
       try {
@@ -231,8 +231,8 @@ class _HomeScreenState extends State<HomeScreen>
       // ── Start live detection ──
       _startLiveDetection();
 
-      // ── Voice output is active by default ──
-
+      // ── Start continuous voice listening (always-on) (DISABLED per user request) ──
+      // await _startContinuousVoice();
 
       // ── Orientation guidance DISABLED for now ──
       // _orientationService.onGuidance = (msg) {
@@ -361,12 +361,25 @@ class _HomeScreenState extends State<HomeScreen>
     await AudioFeedbackService.scanStart();
     _hapticService.tick();
 
+    // Temporarily pause image stream to allow high-quality still capture without camera busy exceptions
+    final wasStreaming = _cameraService.controller?.value.isStreamingImages ?? false;
+    if (wasStreaming) {
+      try {
+        await _cameraService.stopImageStream();
+      } catch (e) {
+        print('Error pausing image stream: $e');
+      }
+    }
+
     try {
       final imageFile = await _cameraService.takePicture();
       if (imageFile == null) {
         _hapticService.stopProcessingHaptic();
         await AudioFeedbackService.error();
         await _ttsService.speakImmediate('Failed to take picture');
+        if (wasStreaming && mounted) {
+          _startLiveDetection();
+        }
         setState(() => _isAnalyzing = false);
         return;
       }
@@ -383,17 +396,8 @@ class _HomeScreenState extends State<HomeScreen>
           result = 'No objects detected.';
         }
       } else if (_currentMode == DetectionMode.currency) {
-        final isOnline = await _geminiService.verifyConnection();
-        if (!isOnline) {
-          final localDetections = await _yoloService.analyzeImage(imageFile);
-          if (localDetections.isNotEmpty) {
-            result = "Offline Mode: Detected a banknote-like shape. Please reconnect to internet to verify Turkish Lira denomination.";
-          } else {
-            result = "Offline Mode: No bill detected. Reconnect or place the bill clearly in front of the camera.";
-          }
-        } else {
-          result = await _geminiService.describeImage(File(imageFile.path), _currentMode);
-        }
+        // 100% LOCAL & OFFLINE currency recognition using TFLite
+        result = await _liraDetectorService.detectCurrency(File(imageFile.path));
       } else if (_currentMode == DetectionMode.medication || 
                  _currentMode == DetectionMode.scene ||
                  _currentMode == DetectionMode.hazard) {
@@ -419,6 +423,9 @@ class _HomeScreenState extends State<HomeScreen>
       await _ttsService.speakImmediate('An error occurred during analysis');
     } finally {
       setState(() => _isAnalyzing = false);
+      if (wasStreaming && mounted) {
+        _startLiveDetection();
+      }
     }
   }
 
@@ -498,8 +505,6 @@ class _HomeScreenState extends State<HomeScreen>
       case DetectionMode.light:
         name = 'Light Detector';
         break;
-      default:
-        name = '';
     }
     _ttsService.speakImmediate(name);
 
@@ -518,130 +523,24 @@ class _HomeScreenState extends State<HomeScreen>
     setState(() {});
   }
 
+
+
+  /// Long press: toggle the camera flash/torch.
   void _onLongPress() async {
     _onUserInteraction();
-    if (_isListeningVoice) {
-      await _voiceCommandService.stopListening();
-      setState(() => _isListeningVoice = false);
-      return;
-    }
-
-    final isQASession = _geminiService.hasActiveSession;
     
-    // Play listen start sound
-    await AudioFeedbackService.scanStart();
-    _hapticService.tick();
-
-    setState(() {
-      _isListeningVoice = true;
-    });
-
-    if (!_voiceCommandService.isInitialized) {
-      final ok = await _voiceCommandService.initialize();
-      if (!ok) {
+    if (_cameraService.isInitialized) {
+      _hapticService.tick();
+      try {
+        await _cameraService.toggleFlash();
         setState(() {
-          _isListeningVoice = false;
+          _isFlashOn = !_isFlashOn;
         });
-        await _ttsService.speakImmediate("Speech recognition is not supported on this device.");
-        return;
+        await _ttsService.speakImmediate(_isFlashOn ? 'Flash on' : 'Flash off');
+      } catch (e) {
+        print('Error toggling flash: $e');
       }
     }
-
-    if (isQASession) {
-      await _ttsService.speakImmediate("Ready for your question. Speak now.");
-    } else {
-      await _ttsService.speakImmediate("Listening for command. Speak now.");
-    }
-
-    // Increased delay to 2500ms so the TTS phrase completes speaking before the microphone turns on
-    await Future.delayed(const Duration(milliseconds: 2500));
-
-    await _voiceCommandService.startListening(
-      onCommandMatched: (command, rawText) async {
-        if (!mounted) return;
-        
-        await AudioFeedbackService.scanComplete();
-
-        if (isQASession && command == AppVoiceCommand.unknown) {
-          // Visual Q&A follow-up question
-          setState(() => _isAnalyzing = true);
-          await _ttsService.speakImmediate("Asking Gemini about: $rawText");
-          final response = await _geminiService.askFollowUp(rawText);
-          setState(() {
-            _isAnalyzing = false;
-            _lastResult = response;
-          });
-          _resultFadeController.forward();
-          await _ttsService.speakImmediate(response);
-          return;
-        }
-
-        // Handle standard voice commands
-        switch (command) {
-          case AppVoiceCommand.scan:
-            await _onTapToScan();
-            break;
-          case AppVoiceCommand.modeObject:
-            _switchMode(DetectionMode.object);
-            break;
-          case AppVoiceCommand.modeHazard:
-            _switchMode(DetectionMode.hazard);
-            break;
-          case AppVoiceCommand.modeCurrency:
-            _switchMode(DetectionMode.currency);
-            break;
-          case AppVoiceCommand.modeMedication:
-            _switchMode(DetectionMode.medication);
-            break;
-          case AppVoiceCommand.modeScene:
-            _switchMode(DetectionMode.scene);
-            break;
-          case AppVoiceCommand.modeLight:
-            _switchMode(DetectionMode.light);
-            break;
-          case AppVoiceCommand.whereAmI:
-            await _fetchLocation();
-            break;
-          case AppVoiceCommand.direction:
-            await _ttsService.speakImmediate(_orientationService.cameraDescription);
-            break;
-          case AppVoiceCommand.mute:
-            if (!_ttsService.isMuted) {
-              _ttsService.toggleMute();
-              await _ttsService.speakImmediate("Muted");
-            }
-            break;
-          case AppVoiceCommand.unmute:
-            if (_ttsService.isMuted) {
-              _ttsService.toggleMute();
-              await _ttsService.speakImmediate("Voice on");
-            }
-            break;
-          case AppVoiceCommand.help:
-            await _ttsService.speakImmediate(
-              "Say: Scan to capture, Mode object, Mode hazard, Mode currency, Where am I, or Compass."
-            );
-            break;
-          default:
-            // Toggle flash as fallback to original requirement
-            try {
-              await _cameraService.toggleFlash();
-              _isFlashOn = !_isFlashOn;
-              await _ttsService.speakImmediate(
-                _isFlashOn ? 'Flash on' : 'Flash off',
-              );
-            } catch (_) {}
-            break;
-        }
-      },
-      onStopListening: () {
-        if (mounted) {
-          setState(() {
-            _isListeningVoice = false;
-          });
-        }
-      },
-    );
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -710,7 +609,6 @@ class _HomeScreenState extends State<HomeScreen>
     WidgetsBinding.instance.removeObserver(this);
     _resultFadeController.dispose();
     _modeSwitchController.dispose();
-    _splashFadeController.dispose();
     _lightDetectorService.dispose();
     _orientationService.dispose();
     _cameraService.dispose();
@@ -740,93 +638,14 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildBody() {
-    if (_isLoading) return _buildSplash();
+    if (_isLoading) {
+      return const SplashScreen();
+    }
     if (_errorMessage != null) return _buildError();
     if (!_cameraService.isInitialized || _cameraService.controller == null) {
       return _buildNoCameraState();
     }
     return _buildMainUI();
-  }
-
-  // ══════════════════════════════════════════════════════════════
-  // ██  SPLASH / LOADING
-  // ══════════════════════════════════════════════════════════════
-
-  Widget _buildSplash() {
-    return Container(
-      color: _kDeepBlack,
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Glowing eye icon
-            Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    _kAccentYellow.withValues(alpha: 0.15),
-                    _kAccentYellow.withValues(alpha: 0.03),
-                    Colors.transparent,
-                  ],
-                  stops: const [0.3, 0.7, 1.0],
-                ),
-                border: Border.all(
-                  color: _kAccentYellow.withValues(alpha: 0.5),
-                  width: 2,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: _kAccentYellow.withValues(alpha: 0.2),
-                    blurRadius: 40,
-                    spreadRadius: 5,
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.visibility_rounded,
-                color: _kAccentYellow,
-                size: 42,
-              ),
-            ),
-            const SizedBox(height: 32),
-            const Text(
-              'ECHOVISION',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 32,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 6,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Your Smart Assistant',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.5),
-                fontSize: 16,
-                fontWeight: FontWeight.w400,
-                letterSpacing: 2,
-              ),
-            ),
-            const SizedBox(height: 40),
-            SizedBox(
-              width: 160,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: const LinearProgressIndicator(
-                  backgroundColor: Colors.white10,
-                  color: _kAccentYellow,
-                  minHeight: 3,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   // ── Error ──
@@ -897,20 +716,11 @@ class _HomeScreenState extends State<HomeScreen>
     return Stack(
       fit: StackFit.expand,
       children: [
-        // ── 1. FULL-BLEED CAMERA (Aspect Ratio Fixed) ──
-        SizedBox.expand(
-          child: FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width: _cameraService.controller!.value.previewSize!.height,
-              height: _cameraService.controller!.value.previewSize!.width,
-              child: CameraPreview(_cameraService.controller!),
-            ),
-          ),
-        ),
+        // ── 1. FULL-BLEED CAMERA (Adaptive Aspect Ratio) ──
+        CameraPreviewBox(controller: _cameraService.controller!),
 
         // ── 1.5 BOUNDING BOX OVERLAY ──
-        _buildBoundingBoxes(),
+        BoundingBoxes(detections: _detections, currentMode: _currentMode),
 
         // ── 2. TOP GRADIENT VEIL ──
         Positioned(
@@ -1013,7 +823,10 @@ class _HomeScreenState extends State<HomeScreen>
           top: padding.top + 14,
           left: 24,
           right: 24,
-          child: _buildTopBar(),
+          child: TopStatusBar(
+            isFlashOn: _isFlashOn,
+            isMuted: _ttsService.isMuted,
+          ),
         ),
 
         // ── 8. BOTTOM: RESULT + MODE PILL ──
@@ -1025,295 +838,24 @@ class _HomeScreenState extends State<HomeScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               // Result card
-              if (_lastResult != null && !_isAnalyzing) _buildResultCard(),
-              if (_lastResult != null && !_isAnalyzing)
+              ResultCard(
+                isSpeaking: _isSpeaking,
+                currentSpokenWord: _currentSpokenWord,
+                resultFadeAnim: _resultFadeAnim,
+              ),
+              if (_lastResult != null && !_isAnalyzing && _isSpeaking && _currentSpokenWord != null)
                 const SizedBox(height: 16),
 
               // Mode pill
-              _buildModePill(),
+              ModePill(
+                currentMode: _currentMode,
+                animation: _modeSwitchAnim,
+              ),
             ],
           ),
         ),
       ],
     );
   }
-
-  // ══════════════════════════════════════════════════════════════
-  // ██  TOP BAR
-  // ══════════════════════════════════════════════════════════════
-
-  Widget _buildTopBar() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        // Brand wordmark
-        const Text(
-          'ECHOVISION',
-          style: TextStyle(
-            color: Colors.white38,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 4,
-          ),
-        ),
-        const Spacer(),
-        // Flash pill
-        if (_isFlashOn)
-          _statusPill(
-            icon: Icons.flashlight_on_rounded,
-            label: 'Flash',
-            color: _kAccentYellow,
-          ),
-        if (_isFlashOn) const SizedBox(width: 8),
-        // Mute pill
-        if (_ttsService.isMuted)
-          _statusPill(
-            icon: Icons.volume_off_rounded,
-            label: 'Muted',
-            color: Colors.red.shade400,
-          ),
-      ],
-    );
-  }
-
-  Widget _statusPill({
-    required IconData icon,
-    required String label,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: _kDeepBlack.withValues(alpha: 0.75),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: color.withValues(alpha: 0.35),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: 14),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ══════════════════════════════════════════════════════════════
-  // ██  MODE PILL — Massive AAA-contrast typography
-  // ══════════════════════════════════════════════════════════════
-
-  Widget _buildModePill() {
-    String label;
-    IconData icon;
-    switch (_currentMode) {
-      case DetectionMode.hazard:
-        label = 'Hazard Detection';
-        icon = Icons.warning_rounded;
-        break;
-      case DetectionMode.object:
-        label = 'Object Scanner';
-        icon = Icons.center_focus_strong_rounded;
-        break;
-      case DetectionMode.currency:
-        label = 'Currency Reader';
-        icon = Icons.payments_rounded;
-        break;
-      case DetectionMode.medication:
-        label = 'Medication Assistant';
-        icon = Icons.medical_services_rounded;
-        break;
-      case DetectionMode.scene:
-        label = 'Scene Description';
-        icon = Icons.landscape_rounded;
-        break;
-      case DetectionMode.light:
-        label = 'Light Detector';
-        icon = Icons.lightbulb_rounded;
-        break;
-    }
-
-    return AnimatedBuilder(
-      animation: _modeSwitchAnim,
-      builder: (context, child) {
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          decoration: BoxDecoration(
-            color: _kDeepBlack.withValues(alpha: 0.9),
-            borderRadius: BorderRadius.circular(50),
-            border: Border.all(
-              color: _kAccentYellow.withValues(alpha: 0.25),
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.6),
-                blurRadius: 30,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Left swipe hint arrow
-              Icon(
-                Icons.chevron_right_rounded,
-                color: Colors.white.withValues(alpha: 0.2),
-                size: 24,
-              ),
-              const SizedBox(width: 10),
-              // Mode icon
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _kAccentYellow.withValues(alpha: 0.15),
-                ),
-                child: Icon(icon, color: _kAccentYellow, size: 20),
-              ),
-              const SizedBox(width: 12),
-              // Mode label — oversized for AAA contrast
-              Flexible(
-                child: Text(
-                  label,
-                  style: const TextStyle(
-                    color: _kAccentYellow,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
-                  ),
-                  textDirection: TextDirection.ltr,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 10),
-              // Right swipe hint arrow
-              Icon(
-                Icons.chevron_left_rounded,
-                color: Colors.white.withValues(alpha: 0.2),
-                size: 24,
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // ══════════════════════════════════════════════════════════════
-  // ██  RESULT CARD — Oversized, readable, cyan-accented
-  // ══════════════════════════════════════════════════════════════
-
-  Widget _buildResultCard() {
-    // Only show text when speaking, and only the current word
-    if (!_isSpeaking || _currentSpokenWord == null) return const SizedBox.shrink();
-
-    return FadeTransition(
-      opacity: _resultFadeAnim,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
-        // No background or border as requested
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Result text — smaller, faded, subtitle style
-            Text(
-              _currentSpokenWord!.toUpperCase(),
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.6),
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 1.2,
-                height: 1.4,
-                shadows: [
-                  Shadow(
-                    color: Colors.black.withValues(alpha: 0.5),
-                    offset: const Offset(0, 2),
-                    blurRadius: 4,
-                  ),
-                ],
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBoundingBoxes() {
-    if (_detections.isEmpty || _currentMode != DetectionMode.object) {
-      return const SizedBox.shrink();
-    }
-
-    final size = MediaQuery.of(context).size;
-    
-    return Stack(
-      children: _detections.map((d) {
-        final box = d.boundingBox;
-        
-        // Simple mapping (Assuming full screen coverage)
-        final left = box.left * size.width;
-        final top = box.top * size.height;
-        final width = box.width * size.width;
-        final height = box.height * size.height;
-
-        return Positioned(
-          left: left,
-          top: top,
-          width: width,
-          height: height,
-          child: Container(
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.white, width: 2),
-              borderRadius: BorderRadius.circular(4),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.3),
-                  blurRadius: 4,
-                  spreadRadius: 1,
-                ),
-              ],
-            ),
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.only(
-                    bottomRight: Radius.circular(4),
-                  ),
-                ),
-                child: Text(
-                  d.label,
-                  style: const TextStyle(
-                    color: Colors.black,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-
 }
+
