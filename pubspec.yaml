@@ -24,6 +24,9 @@ dependencies:
   flutter_dotenv: ^5.2.1
   speech_to_text: ^7.4.0
   battery_plus: ^6.1.1
+  vosk_flutter_2: ^1.0.5
+  archive: ^3.6.1
+  google_mlkit_text_recognition: ^0.14.0
 
 
 dev_dependencies:
@@ -36,6 +39,4 @@ flutter:
 
   assets:
     - .env
-    - assets/models/
-    - assets/models/yolo11n.tflite
-    - assets/models/labelmap.txt
+    - assets/models/          # YOLOv11n (object detection) + lira.tflite (currency v2, YOLOv11n-cls, 97.2%)

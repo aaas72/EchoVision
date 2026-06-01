@@ -9,7 +9,7 @@ class HapticService {
 
   /// Initialize haptic service and check device capability.
   Future<void> initialize() async {
-    _hasVibrator = await Vibration.hasVibrator() ?? false;
+    _hasVibrator = await Vibration.hasVibrator();
   }
 
   /// Provide haptic feedback based on detected object's bounding box.

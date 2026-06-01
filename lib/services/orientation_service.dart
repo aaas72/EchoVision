@@ -26,7 +26,7 @@ class OrientationService {
   // ── Latest raw readings ──
   double _ax = 0, _ay = 0, _az = 0; // accelerometer (m/s²)
   double _mx = 0, _my = 0, _mz = 0; // magnetometer  (µT)
-  double _gx = 0, _gy = 0, _gz = 0; // gyroscope     (rad/s)
+  double _gx = 0, _gy = 0; // gyroscope     (rad/s)
 
   // ── Fused orientation (degrees) ──
   double _cameraPitch = 0; // camera vertical aim
@@ -111,7 +111,6 @@ class OrientationService {
     ).listen((e) {
       _gx = e.x;
       _gy = e.y;
-      _gz = e.z;
       _fuseGyro();
     });
 

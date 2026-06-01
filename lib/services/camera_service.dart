@@ -29,22 +29,34 @@ class CameraService {
 
     _controller = CameraController(
       backCamera,
-      ResolutionPreset.high, // Enforce high-definition (usually 1080p, 16:9) for constant crisp dimensions on all devices
+      ResolutionPreset.high, // 1920x1080 (16:9) — matches phone screen aspect, no unwanted zoom/crop
       enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.yuv420, // Universal YUV420 format for ultra-stable Android performance
+      imageFormatGroup: ImageFormatGroup.jpeg, // JPEG gives higher-quality preview on Xiaomi/Redmi/Samsung hardware encoders
     );
 
     await _controller!.initialize();
     
-    // Ensure standard 1.0 zoom
+    // Lock zoom to 1.0 (no digital zoom degradation)
     try {
       await _controller!.setZoomLevel(1.0);
     } catch (e) {
       print('Camera Zoom Error: $e');
     }
 
-    await _controller!.setFocusMode(FocusMode.auto);
+    // Optimize focus and exposure for sharpest results
+    try {
+      await _controller!.setFocusMode(FocusMode.auto);
+    } catch (e) {
+      print('Camera Focus Error: $e');
+    }
+    try {
+      await _controller!.setExposureMode(ExposureMode.auto);
+    } catch (e) {
+      print('Camera Exposure Error: $e');
+    }
+
     _isInitialized = true;
+    print('Camera initialized: ${_controller!.value.previewSize} | Format: JPEG | Preset: high (16:9)');
   }
 
   /// Start streaming camera frames for real-time analysis.

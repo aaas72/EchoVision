@@ -47,13 +47,16 @@ class GeminiService {
       
       if (decodedImage == null) return 'Failed to process image.';
 
+      // Keep image large enough for Gemini to read fine text (medication, currency)
+      // but cap at 1920px to stay within API bandwidth limits
       final resizedImage = img.copyResize(
         decodedImage, 
-        width: decodedImage.width > decodedImage.height ? 1024 : null,
-        height: decodedImage.height >= decodedImage.width ? 1024 : null,
+        width: decodedImage.width > decodedImage.height ? 1920 : null,
+        height: decodedImage.height >= decodedImage.width ? 1920 : null,
+        interpolation: img.Interpolation.cubic, // Smooth downscale preserves text clarity
       );
 
-      final compressedBytes = Uint8List.fromList(img.encodeJpg(resizedImage, quality: 75));
+      final compressedBytes = Uint8List.fromList(img.encodeJpg(resizedImage, quality: 88));
       print('Image compressed: ${originalBytes.length} -> ${compressedBytes.length} bytes');
 
       // ── 2. Send to Gemini with Retry Logic ──

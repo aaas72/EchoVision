@@ -1,0 +1,28 @@
+description: Ultralytics YOLO11n-cls model trained on D:\UN\4\2\Fatih2\EchoVision\ml_training\dataset
+author: Ultralytics
+date: '2026-06-01T21:28:09.174934'
+version: 8.4.45
+license: AGPL-3.0 License (https://ultralytics.com/license)
+docs: https://docs.ultralytics.com
+stride: 1
+task: classify
+batch: 1
+imgsz:
+- 640
+- 640
+names:
+  0: '10'
+  1: '100'
+  2: '20'
+  3: '200'
+  4: '5'
+  5: '50'
+args:
+  data: null
+  batch: 1
+  fraction: 1.0
+  half: false
+  int8: false
+  nms: false
+channels: 3
+end2end: false
