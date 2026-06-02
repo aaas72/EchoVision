@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../services/camera_service.dart';
@@ -12,11 +13,13 @@ import '../../services/light_detector_service.dart';
 import '../../services/orientation_service.dart';
 import '../../services/gemini_service.dart';
 import '../../services/lira_detector_service.dart';
+import '../../services/text_recognition_service.dart';
 import 'package:battery_plus/battery_plus.dart';
 import '../../core/enums/detection_mode.dart';
 import '../../domain/models/detection_result.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/splash_screen.dart';
+import 'onboarding_screen.dart';
 import '../widgets/camera_preview_box.dart';
 import '../widgets/mode_pill.dart';
 import '../widgets/result_card.dart';
@@ -58,6 +61,9 @@ class _HomeScreenState extends State<HomeScreen>
   final OrientationService _orientationService = OrientationService();
   final GeminiService _geminiService = GeminiService();
   final LiraDetectorService _liraDetectorService = LiraDetectorService();
+  final TextRecognitionService _textRecognitionService = TextRecognitionService();
+
+  // ── Hardware ──
   final Battery _battery = Battery();
 
   // ── State ──
@@ -78,6 +84,8 @@ class _HomeScreenState extends State<HomeScreen>
   // ── Live Detection ──
   List<DetectionResult> _detections = [];
   bool _isProcessingFrame = false;
+  DateTime? _lastSpeechTime;
+  static const int _speechThrottleMs = 3500; // 3.5 seconds
 
   // ── Idle voice guidance ──
   Timer? _idleTimer;
@@ -147,6 +155,7 @@ class _HomeScreenState extends State<HomeScreen>
       await _yoloService.initialize();
       _geminiService.initialize();
       await _liraDetectorService.initialize();
+      await AudioFeedbackService.initialize();
       
       // Initialize offline speech service with download progress tracking (DISABLED per user request)
       // await _voiceCommandService.initialize(
@@ -208,12 +217,24 @@ class _HomeScreenState extends State<HomeScreen>
 
       setState(() => _isLoading = false);
 
-      // ── Startup chime: haptic + system click + welcome voice ──
-      await AudioFeedbackService.scanComplete();
-      await Future.delayed(const Duration(milliseconds: 200));
-      await _ttsService.speakImmediate(
-        'EchoVision ready. Tap to scan, swipe to change mode, swipe down for location.',
-      );
+      final prefs = await SharedPreferences.getInstance();
+      final isFirstLaunch = prefs.getBool('isFirstLaunch') ?? true;
+
+      if (isFirstLaunch && mounted) {
+        await prefs.setBool('isFirstLaunch', false);
+        // Push the 2-Level Smart Interactive Tutorial over HomeScreen
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+        );
+      } else {
+        // ── Normal Startup chime: haptic + welcome voice ──
+        await AudioFeedbackService.scanComplete();
+        await Future.delayed(const Duration(milliseconds: 200));
+        await _ttsService.speakImmediate(
+          'EchoVision ready. Tap to scan, swipe to change mode, swipe down for location.',
+        );
+      }
 
       // ── Verify Gemini API Connection ──
       final isGeminiOk = await _geminiService.verifyConnection();
@@ -290,8 +311,8 @@ class _HomeScreenState extends State<HomeScreen>
     _cameraService.startImageStream((image) async {
       if (_isProcessingFrame || _isAnalyzing) return;
       
-      // Only run live detection for local modes
-      if (_currentMode != DetectionMode.object && _currentMode != DetectionMode.hazard) return;
+      // Only run live detection for local modes (Object)
+      if (_currentMode != DetectionMode.object) return;
 
       // Battery-Adaptive Frame Throttling
       final now = DateTime.now();
@@ -311,9 +332,14 @@ class _HomeScreenState extends State<HomeScreen>
             _detections = results;
           });
 
-          // In Hazard mode, provide urgent feedback for close objects
-          if (_currentMode == DetectionMode.hazard) {
-            _checkHazards(results);
+          // Handle Speech Feedback
+          final canSpeak = _lastSpeechTime == null || now.difference(_lastSpeechTime!).inMilliseconds > _speechThrottleMs;
+
+          if (_currentMode == DetectionMode.object && canSpeak && results.isNotEmpty) {
+            // Group and speak labels cleanly
+            final names = results.map((d) => d.label).toSet().join(', ');
+            _ttsService.speakImmediate(names);
+            _lastSpeechTime = now;
           }
         }
       } catch (e) {
@@ -322,15 +348,6 @@ class _HomeScreenState extends State<HomeScreen>
         _isProcessingFrame = false;
       }
     });
-  }
-
-  void _checkHazards(List<DetectionResult> results) {
-    final closeHazards = results.where((d) => d.isClose).toList();
-    if (closeHazards.isNotEmpty) {
-      final names = closeHazards.map((h) => "${h.label} ${h.horizontalPosition}").toSet().join(', ');
-      _ttsService.speakImmediate('Watch out! There is a $names right in front of you.');
-      _hapticService.heavyImpact();
-    }
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -398,11 +415,16 @@ class _HomeScreenState extends State<HomeScreen>
       } else if (_currentMode == DetectionMode.currency) {
         // 100% LOCAL & OFFLINE currency recognition using TFLite
         result = await _liraDetectorService.detectCurrency(File(imageFile.path));
+      } else if (_currentMode == DetectionMode.text) {
+        // 100% LOCAL & OFFLINE text recognition using ML Kit
+        result = await _textRecognitionService.recognizeText(File(imageFile.path));
       } else if (_currentMode == DetectionMode.medication || 
-                 _currentMode == DetectionMode.scene ||
-                 _currentMode == DetectionMode.hazard) {
-        // Cloud processing via Gemini (including detailed Hazard scan)
+                 _currentMode == DetectionMode.scene) {
+        // Cloud processing via Gemini
+        await AudioFeedbackService.requestInitiated();
         result = await _geminiService.describeImage(File(imageFile.path), _currentMode);
+        await AudioFeedbackService.responseReceived();
+        await Future.delayed(const Duration(milliseconds: 200));
       } else {
         result = '';
       }
@@ -419,7 +441,11 @@ class _HomeScreenState extends State<HomeScreen>
     } catch (e) {
       _hapticService.stopProcessingHaptic();
       print('Scan Error: $e');
-      await AudioFeedbackService.error();
+      if (_currentMode == DetectionMode.medication || _currentMode == DetectionMode.scene) {
+        await AudioFeedbackService.errorState();
+      } else {
+        await AudioFeedbackService.error();
+      }
       await _ttsService.speakImmediate('An error occurred during analysis');
     } finally {
       setState(() => _isAnalyzing = false);
@@ -434,7 +460,7 @@ class _HomeScreenState extends State<HomeScreen>
   // ══════════════════════════════════════════════════════════════
 
   static const _modeOrder = [
-    DetectionMode.hazard,
+    DetectionMode.text,
     DetectionMode.object,
     DetectionMode.currency,
     DetectionMode.medication,
@@ -487,8 +513,8 @@ class _HomeScreenState extends State<HomeScreen>
 
     String name;
     switch (mode) {
-      case DetectionMode.hazard:
-        name = 'Hazard Detection';
+      case DetectionMode.text:
+        name = 'Text Reader';
         break;
       case DetectionMode.object:
         name = 'Object Scanner';
@@ -611,6 +637,7 @@ class _HomeScreenState extends State<HomeScreen>
     _modeSwitchController.dispose();
     _lightDetectorService.dispose();
     _orientationService.dispose();
+    _textRecognitionService.dispose();
     _cameraService.dispose();
     _ttsService.dispose();
     _yoloService.dispose();

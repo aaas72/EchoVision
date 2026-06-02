@@ -27,6 +27,8 @@ dependencies:
   vosk_flutter_2: ^1.0.5
   archive: ^3.6.1
   google_mlkit_text_recognition: ^0.14.0
+  shared_preferences: ^2.5.5
+  audioplayers: ^6.7.0
 
 
 dev_dependencies:
@@ -40,3 +42,4 @@ flutter:
   assets:
     - .env
     - assets/models/          # YOLOv11n (object detection) + lira.tflite (currency v2, YOLOv11n-cls, 97.2%)
+    - assets/sounds/          # UI interaction earcons

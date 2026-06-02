@@ -19,9 +19,9 @@ class ModePill extends StatelessWidget {
     String label;
     IconData icon;
     switch (currentMode) {
-      case DetectionMode.hazard:
-        label = 'Hazard Detection';
-        icon = Icons.warning_rounded;
+      case DetectionMode.text:
+        label = 'Text Reader';
+        icon = Icons.text_snippet_rounded;
         break;
       case DetectionMode.object:
         label = 'Object Scanner';
