@@ -122,23 +122,20 @@ class GeminiService {
   /// Returns specialized prompts for different detection modes.
   /// Formulated to produce warm, humane, conversational, and alert speech outputs.
   String _getPromptForMode(DetectionMode mode) {
-    const avoidMarkdown = ' IMPORTANT: Speak naturally as a human companion. Do not use any markdown symbols (like asterisks, hashtags, bullet lists). Speak in clear, fluent sentences without robotic prefixes.';
+    const avoidMarkdown = 'IMPORTANT: You are speaking directly into the earpiece of a blind person. NEVER use phrases like "In this image", "I can see", "The photo shows", or "Here is". NEVER use markdown, bullet points, or emojis. Speak in concise, natural, spoken English.';
 
     switch (mode) {
-      case DetectionMode.hazard:
-        return 'Act as a protective, alert human guide warning a blind friend about physical dangers. If you detect immediate hazards (like stairs, cables on floor, holes, clutter, or sharp corners), speak in a realistic, urgent, and protective tone. For example: "Watch out! There is a cable on the floor right in front of you." or "Caution! There are steps descending on your left, please slow down." Be direct and helpful. $avoidMarkdown';
-      
       case DetectionMode.scene:
-        return 'Act as a warm, friendly human companion describing the room/surroundings to a blind friend. Speak in a conversational, comforting, and descriptive tone. For example: "Looking around, you are in a brightly lit room. In front of you, there is a large sofa..." or "Let\'s see what is around you. To your right, there is a door...". Describe the layout naturally (left, center, right). $avoidMarkdown';
+        return 'Act as a descriptive sighted guide. Provide a clear spatial layout of the environment so the blind user can build a mental map. Describe what is directly ahead, then to the left, then to the right. Mention the lighting, the type of place (e.g., an office, a busy street), and any prominent objects. Be descriptive but conversational and easy to listen to. $avoidMarkdown';
       
       case DetectionMode.currency:
-        return 'Act as a friendly, reassuring human assistant counting money. State the total amount and the specific bills warmly and clearly. For example: "You are holding a total of 150 Liras. That is a 100 Lira bill and a 50 Lira bill." or "You have a single 20 Lira bill in your hand." $avoidMarkdown';
+        return 'Act as a reliable money counter. Tell the user the exact denominations of the banknotes visible. If no money is visible, strictly say "No currency detected." Keep it very short and direct. $avoidMarkdown';
       
       case DetectionMode.medication:
-        return 'Act as a caring, extremely safety-oriented medical assistant checking a package. Guide the user gently. For example: "Let me check this medicine for you. This is Aspirin, 100 milligrams." Read the dosage ONLY if it is 100% clearly visible. If you cannot read it clearly, explicitly warn them: "I can see the medicine name is Ibuprofen, but the dosage is a bit blurry. Please ask someone to check this for you to be safe." Do not guess. $avoidMarkdown';
+        return 'Act as a concise, human-like medical assistant helping a blind user. CRITICAL RULE: First, strictly verify if the object in the image is actually a medication or medical item. If it is NOT a medical item, reply IMMEDIATELY and ONLY with: "This is not a medical product. Please point the camera at a medication." If it IS a medical item, do not be verbose. Give a very clear, short, and important summary of the medication name, dosage, and purpose as written on the package. Do not guess anything. Respond naturally in English. $avoidMarkdown';
       
       default:
-        return 'Describe the objects or text in front of the camera clearly and warmly, like a friendly companion describing things. $avoidMarkdown';
+        return 'Describe the objects or text in front of the camera clearly and warmly, like a sighted guide. $avoidMarkdown';
     }
   }
 

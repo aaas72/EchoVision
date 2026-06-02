@@ -7,15 +7,15 @@ import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 
 /**
- * Accessibility Service to detect triple volume button press.
- * When user presses volume up or down 3 times quickly, it launches EchoVision.
+ * Accessibility Service to detect double volume button press.
+ * When user presses volume up or down 2 times quickly, it launches EchoVision.
  * This helps blind users open the app without seeing the screen.
  */
 class VolumeAccessibilityService : AccessibilityService() {
 
     private var volumePressCount = 0
     private var lastPressTime = 0L
-    private val TRIPLE_PRESS_TIMEOUT = 500L // 500ms between presses
+    private val DOUBLE_PRESS_TIMEOUT = 500L // 500ms between presses
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -40,7 +40,7 @@ class VolumeAccessibilityService : AccessibilityService() {
                 val currentTime = System.currentTimeMillis()
 
                 // Check if this press is within the timeout window
-                if (currentTime - lastPressTime < TRIPLE_PRESS_TIMEOUT) {
+                if (currentTime - lastPressTime < DOUBLE_PRESS_TIMEOUT) {
                     volumePressCount++
                 } else {
                     // Reset counter if too much time has passed
@@ -49,8 +49,8 @@ class VolumeAccessibilityService : AccessibilityService() {
 
                 lastPressTime = currentTime
 
-                // Triple press detected!
-                if (volumePressCount >= 3) {
+                // Double press detected!
+                if (volumePressCount >= 2) {
                     volumePressCount = 0
                     launchEchoVision()
                     return true // Consume the event

@@ -7,8 +7,8 @@ enum DetectionMode {
   /// LIVE: Continuous audio-haptic feedback based on light levels.
   light,
 
-  /// LIVE: High-speed detection of hazards (stairs, cars, etc.) - Local.
-  hazard,
+  /// LOCAL: Read text from documents and signs using ML Kit.
+  text,
 
   /// CLOUD: Detailed currency recognition using Gemini.
   currency,
