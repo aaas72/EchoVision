@@ -58,26 +58,26 @@ class OrientationService {
 
     // Pitch
     if (_cameraPitch < -55) {
-      parts.add('Camera is pointing at the floor');
+      parts.add('Kamera yere bakıyor');
     } else if (_cameraPitch < -_kPitchWarn) {
-      parts.add('Camera tilted down');
+      parts.add('Kamera aşağı eğik');
     } else if (_cameraPitch > 55) {
-      parts.add('Camera is pointing at the ceiling');
+      parts.add('Kamera tavana bakıyor');
     } else if (_cameraPitch > _kPitchWarn) {
-      parts.add('Camera tilted up');
+      parts.add('Kamera yukarı eğik');
     } else {
-      parts.add('Camera is pointing forward');
+      parts.add('Kamera ileri bakıyor');
     }
 
     // Roll
     if (_cameraRoll.abs() > _kRollWarn) {
-      parts.add(_cameraRoll > 0 ? 'tilted right' : 'tilted left');
+      parts.add(_cameraRoll > 0 ? 'sağa eğik' : 'sola eğik');
     } else {
-      parts.add('level');
+      parts.add('düz');
     }
 
     // Compass
-    parts.add('Direction: ${_headingToEnglish(_heading)}');
+    parts.add('Yön: ${_headingToTurkish(_heading)}');
 
     return '${parts.join(', ')}.';
   }
@@ -231,25 +231,25 @@ class OrientationService {
 
     // Priority 1: Camera pointing at floor
     if (_cameraPitch < -55) {
-      guidance = 'Camera is pointing at the floor. Lift the phone a bit.';
+      guidance = 'Kamera yere bakıyor. Telefonu biraz kaldırın.';
     }
     // Priority 2: Camera pointing at ceiling
     else if (_cameraPitch > 55) {
-      guidance = 'Camera is pointing at the ceiling. Lower the phone a bit.';
+      guidance = 'Kamera tavana bakıyor. Telefonu biraz indirin.';
     }
     // Priority 3: Camera tilted down
     else if (_cameraPitch < -_kPitchWarn) {
-      guidance = 'Camera tilted down. Lift the phone a bit.';
+      guidance = 'Kamera aşağı eğik. Telefonu biraz kaldırın.';
     }
     // Priority 4: Camera tilted up
     else if (_cameraPitch > _kPitchWarn) {
-      guidance = 'Camera tilted up. Lower the phone a bit.';
+      guidance = 'Kamera yukarı eğik. Telefonu biraz indirin.';
     }
     // Priority 5: Camera tilted sideways
     else if (_cameraRoll > _kRollWarn) {
-      guidance = 'Camera tilted right. Level the phone.';
+      guidance = 'Kamera sağa eğik. Telefonu düzeltin.';
     } else if (_cameraRoll < -_kRollWarn) {
-      guidance = 'Camera tilted left. Level the phone.';
+      guidance = 'Kamera sola eğik. Telefonu düzeltin.';
     }
 
     if (guidance != null) {
@@ -258,16 +258,16 @@ class OrientationService {
     }
   }
 
-  /// Convert compass heading to English cardinal direction.
-  String _headingToEnglish(double h) {
-    if (h >= 337.5 || h < 22.5) return 'North';
-    if (h < 67.5) return 'Northeast';
-    if (h < 112.5) return 'East';
-    if (h < 157.5) return 'Southeast';
-    if (h < 202.5) return 'South';
-    if (h < 247.5) return 'Southwest';
-    if (h < 292.5) return 'West';
-    return 'Northwest';
+  /// Convert compass heading to Turkish cardinal direction.
+  String _headingToTurkish(double h) {
+    if (h >= 337.5 || h < 22.5) return 'Kuzey';
+    if (h < 67.5) return 'Kuzeydoğu';
+    if (h < 112.5) return 'Doğu';
+    if (h < 157.5) return 'Güneydoğu';
+    if (h < 202.5) return 'Güney';
+    if (h < 247.5) return 'Güneybatı';
+    if (h < 292.5) return 'Batı';
+    return 'Kuzeybatı';
   }
 
   void dispose() {

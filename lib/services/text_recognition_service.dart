@@ -15,7 +15,7 @@ class TextRecognitionService {
       final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
       
       if (recognizedText.text.trim().isEmpty) {
-        return 'No text detected.';
+        return 'Metin algılanmadı.';
       }
       
       // Clean and format the text slightly so it sounds good via TTS.
@@ -27,7 +27,7 @@ class TextRecognitionService {
       return cleanText;
     } catch (e) {
       print('TextRecognition Error: $e');
-      return 'Error reading text.';
+      return 'Metin okunurken hata oluştu.';
     }
   }
 

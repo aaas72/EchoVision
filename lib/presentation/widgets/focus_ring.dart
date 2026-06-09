@@ -1,9 +1,8 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 
-/// Premium glassmorphic Focus Ring with scanning animations.
-/// - Idle: subtle breathing glow
-/// - Scanning: pulsing ring + horizontal laser sweep
+/// Minimalist, clean Focus Ring with premium rippling animation.
+/// - Idle: subtle breathing thin ring and a small center dot.
+/// - Scanning: smooth, clean expanding ripples fading out gracefully.
 class FocusRing extends StatefulWidget {
   final bool isScanning;
   final double size;
@@ -11,7 +10,7 @@ class FocusRing extends StatefulWidget {
   const FocusRing({
     super.key,
     required this.isScanning,
-    this.size = 220,
+    this.size = 180,
   });
 
   @override
@@ -19,61 +18,33 @@ class FocusRing extends StatefulWidget {
 }
 
 class _FocusRingState extends State<FocusRing> with TickerProviderStateMixin {
-  // Idle breathing animation
-  late AnimationController _breatheController;
-  late Animation<double> _breatheAnim;
+  late AnimationController _idleController;
+  late Animation<double> _idleAnim;
 
-  // Scan pulse animation
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnim;
-
-  // Laser sweep animation
-  late AnimationController _laserController;
-  late Animation<double> _laserAnim;
-
-  // Corner rotation animation
-  late AnimationController _rotateController;
-  late Animation<double> _rotateAnim;
+  late AnimationController _rippleController;
 
   @override
   void initState() {
     super.initState();
 
-    // Idle breathing: slow scale 0.95 → 1.05
-    _breatheController = AnimationController(
+    // Idle breathing (slow, subtle)
+    _idleController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2500),
     )..repeat(reverse: true);
-    _breatheAnim = Tween<double>(begin: 0.97, end: 1.03).animate(
-      CurvedAnimation(parent: _breatheController, curve: Curves.easeInOut),
+    _idleAnim = Tween<double>(begin: 0.95, end: 1.02).animate(
+      CurvedAnimation(parent: _idleController, curve: Curves.easeInOut),
     );
 
-    // Scan pulse: faster, 1.0 → 1.15
-    _pulseController = AnimationController(
+    // Ripple scanning (continuous expansion)
+    _rippleController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
-    _pulseAnim = Tween<double>(begin: 1.0, end: 1.18).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeOut),
+      duration: const Duration(milliseconds: 2000),
     );
 
-    // Laser sweep: top → bottom
-    _laserController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    );
-    _laserAnim = Tween<double>(begin: -0.5, end: 0.5).animate(
-      CurvedAnimation(parent: _laserController, curve: Curves.easeInOut),
-    );
-
-    // Corner rotation for scan mode
-    _rotateController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 3000),
-    );
-    _rotateAnim = Tween<double>(begin: 0, end: 2 * pi).animate(
-      CurvedAnimation(parent: _rotateController, curve: Curves.linear),
-    );
+    if (widget.isScanning) {
+      _startScanAnimation();
+    }
   }
 
   @override
@@ -87,59 +58,45 @@ class _FocusRingState extends State<FocusRing> with TickerProviderStateMixin {
   }
 
   void _startScanAnimation() {
-    _breatheController.stop();
-    _pulseController.repeat(reverse: true);
-    _laserController.repeat();
-    _rotateController.repeat();
+    _idleController.stop();
+    _rippleController.repeat();
   }
 
   void _stopScanAnimation() {
-    _pulseController.stop();
-    _pulseController.reset();
-    _laserController.stop();
-    _laserController.reset();
-    _rotateController.stop();
-    _rotateController.reset();
-    _breatheController.repeat(reverse: true);
+    _rippleController.stop();
+    _rippleController.reset();
+    _idleController.repeat(reverse: true);
   }
 
   @override
   void dispose() {
-    _breatheController.dispose();
-    _pulseController.dispose();
-    _laserController.dispose();
-    _rotateController.dispose();
+    _idleController.dispose();
+    _rippleController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: Listenable.merge([
-        _breatheAnim,
-        _pulseAnim,
-        _laserAnim,
-        _rotateAnim,
-      ]),
+      animation: Listenable.merge([_idleController, _rippleController]),
       builder: (context, child) {
-        final scale = widget.isScanning ? _pulseAnim.value : _breatheAnim.value;
         return SizedBox(
-          width: widget.size * 1.3,
-          height: widget.size * 1.3,
+          width: widget.size * 1.5,
+          height: widget.size * 1.5,
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // Outer glow ring
-              _buildGlowRing(scale),
-
-              // Corner brackets
-              _buildCornerBrackets(scale),
-
-              // Laser sweep line (only during scan)
-              if (widget.isScanning) _buildLaserSweep(),
-
-              // Center dot
-              _buildCenterDot(),
+              // Show smooth ripples when scanning
+              if (widget.isScanning) ...[
+                _buildRipple(delay: 0.0),
+                _buildRipple(delay: 0.5),
+              ] else ...[
+                // Show quiet breathing ring when idle
+                _buildIdleRing(),
+              ],
+              
+              // Clean glowing center dot
+              _buildCenterCore(),
             ],
           ),
         );
@@ -147,11 +104,15 @@ class _FocusRingState extends State<FocusRing> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildGlowRing(double scale) {
-    final color = widget.isScanning
-        ? const Color(0xFFFFD600) // Neon Yellow
-        : Colors.white;
-    final glowOpacity = widget.isScanning ? 0.45 : 0.2;
+  Widget _buildRipple({required double delay}) {
+    // Calculate progress allowing for the delay offset
+    double progress = (_rippleController.value + delay) % 1.0;
+    
+    // Scale expands from 0.4 to 1.4
+    double scale = 0.4 + (progress * 1.0);
+    
+    // Fade out as it expands (opacity goes from 1.0 to 0.0)
+    double opacity = 1.0 - progress;
 
     return Transform.scale(
       scale: scale,
@@ -161,19 +122,14 @@ class _FocusRingState extends State<FocusRing> with TickerProviderStateMixin {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           border: Border.all(
-            color: color.withValues(alpha: widget.isScanning ? 0.9 : 0.5),
-            width: widget.isScanning ? 3.0 : 1.5,
+            color: Colors.white.withValues(alpha: opacity * 0.6),
+            width: 2.0,
           ),
           boxShadow: [
             BoxShadow(
-              color: color.withValues(alpha: glowOpacity),
-              blurRadius: widget.isScanning ? 30 : 15,
-              spreadRadius: widget.isScanning ? 8 : 2,
-            ),
-            BoxShadow(
-              color: color.withValues(alpha: glowOpacity * 0.5),
-              blurRadius: 60,
-              spreadRadius: 0,
+              color: Colors.white.withValues(alpha: opacity * 0.15),
+              blurRadius: 30,
+              spreadRadius: 10,
             ),
           ],
         ),
@@ -181,150 +137,48 @@ class _FocusRingState extends State<FocusRing> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildCornerBrackets(double scale) {
-    final color = widget.isScanning
-        ? const Color(0xFFFFD600)
-        : Colors.white.withValues(alpha: 0.7);
-    final bracketSize = widget.size * 0.38;
-    final offset = widget.size * 0.43;
-
+  Widget _buildIdleRing() {
     return Transform.scale(
-      scale: scale,
-      child: Transform.rotate(
-        angle: widget.isScanning ? _rotateAnim.value * 0.05 : 0,
-        child: SizedBox(
-          width: widget.size,
-          height: widget.size,
-          child: Stack(
-            children: [
-              // Top-left
-              Positioned(
-                left: (widget.size - offset * 2) / 2,
-                top: (widget.size - offset * 2) / 2,
-                child: _cornerBracket(color, bracketSize, 0),
-              ),
-              // Top-right
-              Positioned(
-                right: (widget.size - offset * 2) / 2,
-                top: (widget.size - offset * 2) / 2,
-                child: _cornerBracket(color, bracketSize, pi / 2),
-              ),
-              // Bottom-right
-              Positioned(
-                right: (widget.size - offset * 2) / 2,
-                bottom: (widget.size - offset * 2) / 2,
-                child: _cornerBracket(color, bracketSize, pi),
-              ),
-              // Bottom-left
-              Positioned(
-                left: (widget.size - offset * 2) / 2,
-                bottom: (widget.size - offset * 2) / 2,
-                child: _cornerBracket(color, bracketSize, 3 * pi / 2),
-              ),
-            ],
+      scale: _idleAnim.value,
+      child: Container(
+        width: widget.size * 0.75,
+        height: widget.size * 0.75,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.25),
+            width: 1.0,
           ),
         ),
       ),
     );
   }
 
-  Widget _cornerBracket(Color color, double size, double rotation) {
-    return Transform.rotate(
-      angle: rotation,
-      child: CustomPaint(
-        size: Size(size, size),
-        painter: _CornerPainter(color: color, strokeWidth: 2.5),
-      ),
-    );
-  }
-
-  Widget _buildLaserSweep() {
-    return ClipOval(
-      child: SizedBox(
-        width: widget.size * 0.85,
-        height: widget.size * 0.85,
-        child: Stack(
-          children: [
-            Positioned(
-              top: (widget.size * 0.85) * (0.5 + _laserAnim.value),
-              left: 0,
-              right: 0,
-              child: Container(
-                height: 2.5,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.transparent,
-                      const Color(0xFFFFD600).withValues(alpha: 0.8),
-                      const Color(0xFF00E5FF),
-                      const Color(0xFFFFD600).withValues(alpha: 0.8),
-                      Colors.transparent,
-                    ],
-                    stops: const [0.0, 0.2, 0.5, 0.8, 1.0],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF00E5FF).withValues(alpha: 0.6),
-                      blurRadius: 12,
-                      spreadRadius: 2,
-                    ),
-                  ],
-                ),
-              ),
+  Widget _buildCenterCore() {
+    final isScanning = widget.isScanning;
+    
+    // Core pulses slightly with the idle animation if not scanning
+    final coreScale = isScanning ? 1.0 : _idleAnim.value;
+    
+    return Transform.scale(
+      scale: coreScale,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeOutCubic,
+        width: isScanning ? 20 : 10,
+        height: isScanning ? 20 : 10,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white.withValues(alpha: isScanning ? 1.0 : 0.8),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.white.withValues(alpha: isScanning ? 0.6 : 0.3),
+              blurRadius: isScanning ? 24 : 12,
+              spreadRadius: isScanning ? 6 : 2,
             ),
           ],
         ),
       ),
     );
   }
-
-  Widget _buildCenterDot() {
-    final color = widget.isScanning
-        ? const Color(0xFFFFD600)
-        : Colors.white;
-    return Container(
-      width: 8,
-      height: 8,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: color.withValues(alpha: 0.8),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.5),
-            blurRadius: 8,
-            spreadRadius: 1,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Paints an L-shaped corner bracket.
-class _CornerPainter extends CustomPainter {
-  final Color color;
-  final double strokeWidth;
-
-  _CornerPainter({required this.color, required this.strokeWidth});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = strokeWidth
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    final length = size.width * 0.45;
-    final path = Path()
-      ..moveTo(0, length)
-      ..lineTo(0, 0)
-      ..lineTo(length, 0);
-
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(_CornerPainter oldDelegate) =>
-      color != oldDelegate.color || strokeWidth != oldDelegate.strokeWidth;
 }

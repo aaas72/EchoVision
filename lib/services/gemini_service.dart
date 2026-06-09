@@ -122,20 +122,20 @@ class GeminiService {
   /// Returns specialized prompts for different detection modes.
   /// Formulated to produce warm, humane, conversational, and alert speech outputs.
   String _getPromptForMode(DetectionMode mode) {
-    const avoidMarkdown = 'IMPORTANT: You are speaking directly into the earpiece of a blind person. NEVER use phrases like "In this image", "I can see", "The photo shows", or "Here is". NEVER use markdown, bullet points, or emojis. Speak in concise, natural, spoken English.';
+    const avoidMarkdown = 'ÖNEMLİ: Görme engelli bir kişinin kulaklığına doğrudan konuşuyorsunuz. ASLA "Bu resimde", "Görebiliyorum", "Fotoğraf gösteriyor ki" veya "Burada" gibi ifadeler kullanmayın. ASLA markdown formatı, madde işaretleri veya emojiler kullanmayın. Kısa, doğal ve akıcı bir Türkçe ile konuşun.';
 
     switch (mode) {
       case DetectionMode.scene:
-        return 'Act as a descriptive sighted guide. Provide a clear spatial layout of the environment so the blind user can build a mental map. Describe what is directly ahead, then to the left, then to the right. Mention the lighting, the type of place (e.g., an office, a busy street), and any prominent objects. Be descriptive but conversational and easy to listen to. $avoidMarkdown';
+        return 'Betimleyici bir rehber gibi davranın. Görme engelli kullanıcının zihninde bir harita oluşturabilmesi için çevrenin net bir mekansal düzenini sağlayın. Doğrudan önünde ne olduğunu, ardından solundakileri ve sağındakileri açıklayın. Işıklandırmayı, mekanın türünü (örneğin bir ofis veya hareketli bir cadde) ve belirgin nesneleri belirtin. Açıklayıcı olun ancak konuşma dilinde ve dinlemesi kolay bir ton kullanın. $avoidMarkdown';
       
       case DetectionMode.currency:
-        return 'Act as a reliable money counter. Tell the user the exact denominations of the banknotes visible. If no money is visible, strictly say "No currency detected." Keep it very short and direct. $avoidMarkdown';
+        return 'Güvenilir bir para sayacı gibi davranın. Kullanıcıya görünen banknotların tam değerini söyleyin. Eğer para görünmüyorsa kesinlikle "Hiçbir para algılanmadı." deyin. Çok kısa ve doğrudan tutun. $avoidMarkdown';
       
       case DetectionMode.medication:
-        return 'Act as a concise, human-like medical assistant helping a blind user. CRITICAL RULE: First, strictly verify if the object in the image is actually a medication or medical item. If it is NOT a medical item, reply IMMEDIATELY and ONLY with: "This is not a medical product. Please point the camera at a medication." If it IS a medical item, do not be verbose. Give a very clear, short, and important summary of the medication name, dosage, and purpose as written on the package. Do not guess anything. Respond naturally in English. $avoidMarkdown';
+        return 'Görme engelli bir kullanıcıya yardımcı olan kısa ve insansı bir tıbbi asistan gibi davranın. KRİTİK KURAL: İlk olarak, görüntüdeki nesnenin gerçekten bir ilaç veya tıbbi ürün olup olmadığını kesin olarak doğrulayın. Eğer tıbbi bir ürün DEĞİLSE, HEMEN ve YALNIZCA şu yanıtı verin: "Bu tıbbi bir ürün değil. Lütfen kamerayı bir ilaca doğrultun." Eğer bir tıbbi ürün İSE, sözü uzatmayın. Paketin üzerinde yazan ilaç adını, dozajını ve amacını çok net, kısa ve önemli bir özet şeklinde verin. Hiçbir şeyi tahmin etmeyin. Türkçe olarak doğal bir şekilde yanıtlayın. $avoidMarkdown';
       
       default:
-        return 'Describe the objects or text in front of the camera clearly and warmly, like a sighted guide. $avoidMarkdown';
+        return 'Kameranın önündeki nesneleri veya metni, tıpkı gören bir rehber gibi, net ve samimi bir şekilde Türkçe olarak betimleyin. $avoidMarkdown';
     }
   }
 
@@ -153,16 +153,16 @@ class GeminiService {
 
   /// Ask a follow-up question about the last analyzed image.
   Future<String> askFollowUp(String question) async {
-    if (!_isInitialized) return 'Gemini service not initialized.';
-    if (_lastImageBytes == null) return 'Please scan an image first.';
+    if (!_isInitialized) return 'Gemini servisi başlatılmadı.';
+    if (_lastImageBytes == null) return 'Lütfen önce bir resmi tarayın.';
 
     try {
       _chatHistory.add(Content.text(
-        '$question. IMPORTANT: Keep your response short, clear, and direct. Do not use markdown or emojis.'
+        '$question. ÖNEMLİ: Yanıtınızı kısa, net ve doğrudan tutun. Markdown veya emoji kullanmayın. Türkçe yanıt verin.'
       ));
 
       final response = await _model.generateContent(_chatHistory);
-      String resultText = response.text ?? 'No reply received.';
+      String resultText = response.text ?? 'Yanıt alınamadı.';
 
       resultText = resultText
           .replaceAll(RegExp(r'[\*\#\_]'), '') // Remove markdown symbols
@@ -175,7 +175,7 @@ class GeminiService {
       return resultText;
     } catch (e) {
       print('Gemini Q&A Error: $e');
-      return 'Sorry, I could not analyze the question.';
+      return 'Üzgünüm, soruyu analiz edemedim.';
     }
   }
 

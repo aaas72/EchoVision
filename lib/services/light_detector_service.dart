@@ -20,12 +20,12 @@ class LightDetectorService {
 
   /// English description of current light level.
   String get levelDescription {
-    if (_currentBrightness < 30) return 'Pitch black';
-    if (_currentBrightness < 70) return 'Dark';
-    if (_currentBrightness < 110) return 'Dim light';
-    if (_currentBrightness < 160) return 'Medium light';
-    if (_currentBrightness < 210) return 'Good light';
-    return 'Strong light';
+    if (_currentBrightness < 30) return 'Zifiri karanlık';
+    if (_currentBrightness < 70) return 'Karanlık';
+    if (_currentBrightness < 110) return 'Loş ışık';
+    if (_currentBrightness < 160) return 'Orta ışık';
+    if (_currentBrightness < 210) return 'İyi ışık';
+    return 'Güçlü ışık';
   }
 
   /// Start the light detector — begins image streaming & audio feedback.
