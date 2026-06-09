@@ -47,12 +47,12 @@ class LiraDetectorService {
   static const int _inputSize = 640;
 
   static const List<String> _denominations = [
-    "10 Turkish Lira",
-    "100 Turkish Lira",
-    "20 Turkish Lira",
-    "200 Turkish Lira",
-    "5 Turkish Lira",
-    "50 Turkish Lira",
+    "10 Türk Lirası",
+    "100 Türk Lirası",
+    "20 Türk Lirası",
+    "200 Türk Lirası",
+    "5 Türk Lirası",
+    "50 Türk Lirası",
   ];
 
   bool get isInitialized => _isInitialized;
@@ -83,7 +83,7 @@ class LiraDetectorService {
 
   Future<String> detectCurrency(File imageFile) async {
     if (!_isInitialized || _interpreter == null) {
-      return "Offline Mode: bank-note shape detected. (Place it closer to scan fully)";
+      return "Çevrimdışı Mod: Banknot şekli algılandı. (Tam taramak için daha yakınlaştırın)";
     }
 
     try {
@@ -120,7 +120,7 @@ class LiraDetectorService {
         
         if (bestDenom != null) {
           print("LiraDetector: ML Kit confidently found $bestDenom TL (Count: $maxCount)");
-          return "$bestDenom Turkish Lira";
+          return "$bestDenom Türk Lirası";
         }
       }
 
@@ -136,7 +136,7 @@ class LiraDetectorService {
         'inputSize': _inputSize,
       });
 
-      if (inputData.isEmpty) return "Error reading image.";
+      if (inputData.isEmpty) return "Görüntü okunamadı.";
 
       final output = [List<double>.filled(_denominations.length, 0.0)];
 
@@ -165,11 +165,11 @@ class LiraDetectorService {
       if (maxIndex >= 0 && maxProb > 0.30) {
         return _denominations[maxIndex];
       } else {
-        return "Unclear banknote. Please center the bill and try again.";
+        return "Net olmayan banknot. Lütfen banknotu ortalayıp tekrar deneyin.";
       }
     } catch (e) {
       print('LiraDetector Inference Error: $e');
-      return "Scan error. Please try again under better lighting.";
+      return "Tarama hatası. Lütfen daha iyi ışık altında tekrar deneyin.";
     }
   }
 }

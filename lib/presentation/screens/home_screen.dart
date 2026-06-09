@@ -137,10 +137,10 @@ class _HomeScreenState extends State<HomeScreen>
     if (!cameraGranted) {
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Camera permission not granted. Please enable it in settings.';
+        _errorMessage = 'Kamera izni verilmedi. Lütfen ayarlardan etkinleştirin.';
       });
       await _ttsService.initialize();
-      await _ttsService.speakImmediate('Camera permission required');
+      await _ttsService.speakImmediate('Kamera izni gerekiyor');
       return;
     }
 
@@ -232,7 +232,7 @@ class _HomeScreenState extends State<HomeScreen>
         await AudioFeedbackService.scanComplete();
         await Future.delayed(const Duration(milliseconds: 200));
         await _ttsService.speakImmediate(
-          'EchoVision ready. Tap to scan, swipe to change mode, swipe down for location.',
+          'YankıGörüş hazır. Taramak için dokunun, modu değiştirmek için kaydırın, konum için aşağı kaydırın.',
         );
       }
 
@@ -240,7 +240,7 @@ class _HomeScreenState extends State<HomeScreen>
       final isGeminiOk = await _geminiService.verifyConnection();
       if (!isGeminiOk && mounted) {
         print('Gemini API verification failed.');
-        _ttsService.speakImmediate('Warning: Cloud features are currently offline.');
+        _ttsService.speakImmediate('Uyarı: Bulut özellikleri şu anda çevrimdışı.');
       }
 
       // ── Check accessibility service for volume button shortcut ──
@@ -269,7 +269,7 @@ class _HomeScreenState extends State<HomeScreen>
       });
       try {
         await _ttsService.initialize();
-        await _ttsService.speakImmediate('Camera failed to start.');
+        await _ttsService.speakImmediate('Kamera başlatılamadı.');
       } catch (_) {}
     }
   }
@@ -292,7 +292,7 @@ class _HomeScreenState extends State<HomeScreen>
     _idleTimer = Timer(const Duration(seconds: _kIdleGuidanceSeconds), () {
       if (!_isAnalyzing && !_ttsService.isMuted && mounted) {
         _ttsService.speakImmediate(
-          'Tap the screen to scan or swipe left and right to change modes.',
+          'Taramak için ekrana dokunun veya modları değiştirmek için sola ve sağa kaydırın.',
         );
       }
     });
@@ -337,7 +337,7 @@ class _HomeScreenState extends State<HomeScreen>
 
           if (_currentMode == DetectionMode.object && canSpeak && results.isNotEmpty) {
             // Group and speak labels cleanly
-            final names = results.map((d) => d.label).toSet().join(', ');
+            final names = results.map((d) => d.turkishLabel).toSet().join(', ');
             _ttsService.speakImmediate(names);
             _lastSpeechTime = now;
           }
@@ -393,7 +393,7 @@ class _HomeScreenState extends State<HomeScreen>
       if (imageFile == null) {
         _hapticService.stopProcessingHaptic();
         await AudioFeedbackService.error();
-        await _ttsService.speakImmediate('Failed to take picture');
+        await _ttsService.speakImmediate('Fotoğraf çekilemedi');
         if (wasStreaming && mounted) {
           _startLiveDetection();
         }
@@ -410,7 +410,7 @@ class _HomeScreenState extends State<HomeScreen>
         if (results.isNotEmpty) {
           result = results.map((d) => d.description).join(', ');
         } else {
-          result = 'No objects detected.';
+          result = 'Hiçbir nesne algılanmadı.';
         }
       } else if (_currentMode == DetectionMode.currency) {
         // 100% LOCAL & OFFLINE currency recognition using TFLite
@@ -446,7 +446,7 @@ class _HomeScreenState extends State<HomeScreen>
       } else {
         await AudioFeedbackService.error();
       }
-      await _ttsService.speakImmediate('An error occurred during analysis');
+      await _ttsService.speakImmediate('Analiz sırasında bir hata oluştu');
     } finally {
       setState(() => _isAnalyzing = false);
       if (wasStreaming && mounted) {
@@ -514,22 +514,22 @@ class _HomeScreenState extends State<HomeScreen>
     String name;
     switch (mode) {
       case DetectionMode.text:
-        name = 'Text Reader';
+        name = 'Metin Okuyucu';
         break;
       case DetectionMode.object:
-        name = 'Object Scanner';
+        name = 'Nesne Tarayıcı';
         break;
       case DetectionMode.currency:
-        name = 'Currency Reader';
+        name = 'Para Okuyucu';
         break;
       case DetectionMode.medication:
-        name = 'Medication Assistant';
+        name = 'İlaç Asistanı';
         break;
       case DetectionMode.scene:
-        name = 'Scene Description';
+        name = 'Sahne Açıklayıcı';
         break;
       case DetectionMode.light:
-        name = 'Light Detector';
+        name = 'Işık Dedektörü';
         break;
     }
     _ttsService.speakImmediate(name);
@@ -545,7 +545,7 @@ class _HomeScreenState extends State<HomeScreen>
     final muted = _ttsService.toggleMute();
     AudioFeedbackService.uiClick();
     _hapticService.tick();
-    if (!muted) _ttsService.speakImmediate('Voice on');
+    if (!muted) _ttsService.speakImmediate('Ses açık');
     setState(() {});
   }
 
@@ -562,7 +562,7 @@ class _HomeScreenState extends State<HomeScreen>
         setState(() {
           _isFlashOn = !_isFlashOn;
         });
-        await _ttsService.speakImmediate(_isFlashOn ? 'Flash on' : 'Flash off');
+        await _ttsService.speakImmediate(_isFlashOn ? 'Flaş açık' : 'Flaş kapalı');
       } catch (e) {
         print('Error toggling flash: $e');
       }
@@ -598,7 +598,7 @@ class _HomeScreenState extends State<HomeScreen>
 
     AudioFeedbackService.scanStart();
     _hapticService.tick();
-    await _ttsService.speakImmediate('Locating...');
+    await _ttsService.speakImmediate('Konum alınıyor...');
 
     try {
       final description =
@@ -609,7 +609,7 @@ class _HomeScreenState extends State<HomeScreen>
       await _ttsService.speakImmediate(description);
     } catch (e) {
       await AudioFeedbackService.error();
-      await _ttsService.speakImmediate('Could not determine location');
+      await _ttsService.speakImmediate('Konum belirlenemedi');
     } finally {
       setState(() => _isFetchingLocation = false);
     }
@@ -723,7 +723,7 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _buildNoCameraState() {
     return const Center(
       child: Text(
-        'Camera unavailable',
+        'Kamera kullanılamıyor',
         style: TextStyle(
           color: Colors.white54,
           fontSize: 22,
@@ -823,27 +823,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
 
-        // ── 6. "ANALYZING" / "LOCATING" TEXT ──
-        if (_isAnalyzing || _isFetchingLocation)
-          Positioned(
-            bottom: MediaQuery.of(context).size.height * 0.38,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Text(
-                _isFetchingLocation
-                    ? 'Locating...'
-                    : 'Analyzing...',
-                style: TextStyle(
-                  color: _kAccentYellow.withValues(alpha: 0.9),
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.5,
-                ),
-                textDirection: TextDirection.rtl,
-              ),
-            ),
-          ),
+
 
         // ── 7. TOP BAR: STATUS ──
         Positioned(

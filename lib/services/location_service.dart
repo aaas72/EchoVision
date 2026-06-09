@@ -10,7 +10,7 @@ class LocationService {
     // ── 1. Check if location services are enabled ──
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      return 'Location service is disabled. Please enable GPS in settings.';
+      return 'Konum servisi devre dışı. Lütfen ayarlardan GPS\'i etkinleştirin.';
     }
 
     // ── 2. Check / request permission ──
@@ -18,11 +18,11 @@ class LocationService {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        return 'Location permission denied.';
+        return 'Konum izni reddedildi.';
       }
     }
     if (permission == LocationPermission.deniedForever) {
-      return 'Location permission permanently denied. Please enable it in app settings.';
+      return 'Konum izni kalıcı olarak reddedildi. Lütfen uygulama ayarlarından etkinleştirin.';
     }
 
     // ── 3. Get current position (high accuracy for GPS) ──
@@ -35,7 +35,7 @@ class LocationService {
         ),
       );
     } catch (e) {
-      return 'Could not determine location. Ensure GPS is active and you are in an open area.';
+      return 'Konum belirlenemedi. GPS\'in açık ve açık alanda olduğunuzdan emin olun.';
     }
 
     // ── 4. Reverse geocode → address ──
@@ -47,7 +47,7 @@ class LocationService {
 
       if (placemarks.isNotEmpty) {
         final p = placemarks.first;
-        return _buildEnglishAddress(p, position);
+        return _buildTurkishAddress(p, position);
       }
     } catch (_) {
       // Reverse geocoding failed — fall back to coordinates
@@ -56,28 +56,27 @@ class LocationService {
     // ── 5. Fallback: raw coordinates ──
     final lat = position.latitude.toStringAsFixed(5);
     final lng = position.longitude.toStringAsFixed(5);
-    return 'Current location: Latitude $lat, Longitude $lng.';
+    return 'Mevcut konum: Enlem $lat, Boylam $lng.';
   }
 
-  /// Build a natural English address string from placemark data.
-  String _buildEnglishAddress(Placemark p, Position pos) {
+  /// Build a natural Turkish address string from placemark data.
+  String _buildTurkishAddress(Placemark p, Position pos) {
     final parts = <String>[];
 
-    // Street
+    // Street / Mahalle
     if (p.street != null && p.street!.isNotEmpty) {
       parts.add(p.street!);
     }
-    // Sub-locality (neighborhood / district)
+    // Sub-locality (district / semt)
     if (p.subLocality != null && p.subLocality!.isNotEmpty) {
       parts.add(p.subLocality!);
     }
-    // Locality (city)
+    // Locality (city / ilçe)
     if (p.locality != null && p.locality!.isNotEmpty) {
       parts.add(p.locality!);
     }
-    // Administrative area (state / province)
+    // Administrative area (province / il)
     if (p.administrativeArea != null && p.administrativeArea!.isNotEmpty) {
-      // Only add if different from city
       if (p.administrativeArea != p.locality) {
         parts.add(p.administrativeArea!);
       }
@@ -90,9 +89,9 @@ class LocationService {
     if (parts.isEmpty) {
       final lat = pos.latitude.toStringAsFixed(5);
       final lng = pos.longitude.toStringAsFixed(5);
-      return 'Current location: Latitude $lat, Longitude $lng.';
+      return 'Mevcut konum: Enlem $lat, Boylam $lng.';
     }
 
-    return 'Current location: ${parts.join(', ')}.';
+    return 'Mevcut konum: ${parts.join(', ')}.';
   }
 }

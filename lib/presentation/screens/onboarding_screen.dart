@@ -47,47 +47,47 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       // ── Level 1: Gestures ──
       case TutorialStep.welcome:
         await _ttsService.speakImmediate(
-          'Welcome to EchoVision. Let\'s start Level 1: Gestures. First, swipe your finger left or right on the screen to change modes. Please swipe now.'
+          'YankıGörüş\'e hoş geldiniz. Seviye 1 olan Hareketler ile başlayalım. İlk olarak, modları değiştirmek için parmağınızı ekranda sola veya sağa kaydırın. Lütfen şimdi kaydırın.'
         );
         break;
       case TutorialStep.swipe:
         break;
       case TutorialStep.tap:
         await _ttsService.speakImmediate(
-          'Great job! Now, tap the screen once anywhere to scan the environment. Please tap now.'
+          'Harika iş! Şimdi, çevreyi taramak için ekrana herhangi bir yere bir kez dokunun. Lütfen şimdi dokunun.'
         );
         break;
       case TutorialStep.doubleTap:
         await _ttsService.speakImmediate(
-          'Excellent! Finally, double tap the screen quickly to mute or unmute voice guidance. Try double tapping now.'
+          'Mükemmel! Son olarak, sesli yönlendirmeyi sessize almak veya açmak için ekrana hızlıca çift dokunun. Şimdi çift dokunmayı deneyin.'
         );
         break;
 
       // ── Level 2: Audio-Haptic Feedback ──
       case TutorialStep.level2Welcome:
         await _ttsService.speakImmediate(
-          'Excellent! You have completed Level 1. Now for Level 2: The Sound Mechanism. Tap the screen once to hear the START sound.'
+          'Mükemmel! Seviye 1\'i tamamladınız. Şimdi Seviye 2 olan Ses Mekanizması\'na geçelim. Başlangıç sesini duymak için ekrana bir kez dokunun.'
         );
         break;
       case TutorialStep.listenStart:
         await AudioFeedbackService.requestInitiated();
         await Future.delayed(const Duration(milliseconds: 1000));
         await _ttsService.speakImmediate(
-          'This sound and vibration means I am thinking. Now tap again to hear the SUCCESS sound.'
+          'Bu ses ve titreşim düşündüğüm anlamına gelir. Şimdi başarılı tarama sesini duymak için tekrar dokunun.'
         );
         break;
       case TutorialStep.listenSuccess:
         await AudioFeedbackService.responseReceived();
         await Future.delayed(const Duration(milliseconds: 1000));
         await _ttsService.speakImmediate(
-          'This means I found a result. Finally, tap again to hear the ERROR sound.'
+          'Bu, bir sonuç bulduğum anlamına gelir. Son olarak, hata sesini duymak için tekrar dokunun.'
         );
         break;
       case TutorialStep.listenError:
         await AudioFeedbackService.errorState();
         await Future.delayed(const Duration(milliseconds: 1000));
         await _ttsService.speakImmediate(
-          'This heavy vibration means there was a network problem. You have completed the training! Welcome to EchoVision.'
+          'Bu güçlü titreşim bir ağ bağlantısı sorunu olduğu anlamına gelir. Eğitimi tamamladınız! YankıGörüş\'e hoş geldiniz.'
         );
         await Future.delayed(const Duration(seconds: 6));
         _completeOnboarding();
@@ -112,19 +112,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     switch (_currentStep) {
       case TutorialStep.welcome:
       case TutorialStep.swipe:
-        _ttsService.speakImmediate('Please swipe left or right.');
+        _ttsService.speakImmediate('Lütfen sola veya sağa kaydırın.');
         break;
       case TutorialStep.tap:
-        _ttsService.speakImmediate('Please tap once.');
+        _ttsService.speakImmediate('Lütfen bir kez dokunun.');
         break;
       case TutorialStep.doubleTap:
-        _ttsService.speakImmediate('Please double tap quickly.');
+        _ttsService.speakImmediate('Lütfen hızlıca çift dokunun.');
         break;
       case TutorialStep.level2Welcome:
       case TutorialStep.listenStart:
       case TutorialStep.listenSuccess:
       case TutorialStep.listenError:
-        _ttsService.speakImmediate('Please tap once.');
+        _ttsService.speakImmediate('Lütfen bir kez dokunun.');
         break;
       default:
         break;
