@@ -27,6 +27,10 @@ class ModePill extends StatelessWidget {
         label = 'Object Scanner';
         icon = Icons.center_focus_strong_rounded;
         break;
+      case DetectionMode.hand:
+        label = 'Handheld Scanner';
+        icon = Icons.back_hand_rounded;
+        break;
       case DetectionMode.currency:
         label = 'Currency Reader';
         icon = Icons.payments_rounded;

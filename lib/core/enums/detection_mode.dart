@@ -18,4 +18,8 @@ enum DetectionMode {
 
   /// CLOUD: Full scene description using Gemini.
   scene,
+
+  /// LOCAL: Crop hand and identify object held in it.
+  hand,
 }
+

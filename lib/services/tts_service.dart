@@ -1,25 +1,15 @@
-import 'dart:convert';
-import 'dart:io';
+import 'dart:async';
 import 'package:flutter_tts/flutter_tts.dart';
-import 'package:http/http.dart' as http;
-import 'package:audioplayers/audioplayers.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../../core/constants/app_constants.dart';
 
-/// Service responsible for text-to-speech output with Google Cloud TTS and local fallback.
+/// Service responsible for text-to-speech output using the local TTS engine.
 /// Prevents spamming the user by only repeating the same label
 /// after [AppConstants.ttsDebounceSeconds] seconds.
 class TtsService {
   final FlutterTts _flutterTts = FlutterTts();
-  final AudioPlayer _cloudAudioPlayer = AudioPlayer()..setReleaseMode(ReleaseMode.stop);
   final Map<String, DateTime> _lastSpoken = {};
   
   bool _isMuted = false;
-  bool _useCloudTts = false;
-  String? _googleApiKey;
-  File? _tempAudioFile;
-  bool _isSpeakingCloud = false;
 
   bool get isMuted => _isMuted;
 
@@ -28,126 +18,188 @@ class TtsService {
   void Function()? onSpeechStart;
   void Function()? onSpeechFinished;
 
-  /// Initialize TTS engines.
+  /// Initialize TTS engine.
   Future<void> initialize() async {
-    // 1. Check Google Cloud API key
-    _googleApiKey = dotenv.env['GOOGLE_CLOUD_TTS_API_KEY'];
-    if (_googleApiKey == null || _googleApiKey!.isEmpty) {
-      _googleApiKey = dotenv.env['GEMINI_API_KEY'];
-    }
-
-    if (_googleApiKey != null && _googleApiKey!.isNotEmpty) {
-      _useCloudTts = true;
-      print('TTS: Google Cloud API Key detected. Using Cloud TTS as primary engine.');
-    } else {
-      print('TTS: Google Cloud API Key missing. Using local TTS as primary.');
-    }
-
-    // 2. Setup temp directory for audio files
-    try {
-      final tempDir = await getTemporaryDirectory();
-      _tempAudioFile = File('${tempDir.path}/gtts_cache.mp3');
-    } catch (e) {
-      print('TTS Error initializing temp dir: $e');
-    }
-
-    // 3. Setup cloud player completion listener
-    _cloudAudioPlayer.onPlayerComplete.listen((_) {
-      print('TTS (Cloud): Finished speaking');
-      _isSpeakingCloud = false;
-      if (onSpeechFinished != null) onSpeechFinished!();
-    });
-
-    // 4. Initialize local TTS engine (always initialized as fallback/backup)
     await _initLocalTts();
+    print('TTS: Initialized with local TTS engine only.');
   }
 
-  /// Initialize local TTS engine with Turkish/English configuration.
+  /// Initialize local TTS engine with strict Turkish voice and articulation.
   Future<void> _initLocalTts() async {
+    // ── 1. Select the best TTS engine (prefer Google) ──
     final engines = await _flutterTts.getEngines;
     if (engines is List) {
       final engineList = List<String>.from(engines.map((e) => e.toString()));
       print('TTS Available engines: $engineList');
 
+      // Priority order: Google > Samsung > any other
+      String? bestEngine;
       for (final engine in engineList) {
-        if (engine.toLowerCase().contains('google')) {
-          await _flutterTts.setEngine(engine);
-          print('TTS Using local engine: $engine');
+        final lower = engine.toLowerCase();
+        if (lower.contains('google')) {
+          bestEngine = engine;
+          break; // Google is the best for Turkish
+        } else if (lower.contains('samsung') && bestEngine == null) {
+          bestEngine = engine;
+        }
+      }
+      if (bestEngine != null) {
+        await _flutterTts.setEngine(bestEngine);
+        print('TTS Selected engine: $bestEngine');
+      }
+    }
+
+    // ── 2. Force Turkish language (tr-TR) ──
+    // Set language BEFORE checking availability to prime the engine
+    await _flutterTts.setLanguage('tr-TR');
+
+    final hasTurkish = await _flutterTts.isLanguageAvailable('tr-TR');
+    if (hasTurkish != true) {
+      // Try alternative Turkish locale codes
+      final alternatives = ['tr', 'tr_TR', 'tur'];
+      bool found = false;
+      for (final alt in alternatives) {
+        final available = await _flutterTts.isLanguageAvailable(alt);
+        if (available == true) {
+          await _flutterTts.setLanguage(alt);
+          found = true;
+          print('TTS: Turkish found with locale code: $alt');
           break;
         }
       }
-    }
-
-    await _flutterTts.setVolume(1.0);
-    
-    // Check Turkish availability
-    final hasTurkish = await _flutterTts.isLanguageAvailable('tr-TR');
-    if (hasTurkish == true) {
-      await _flutterTts.setLanguage('tr-TR');
-      await _flutterTts.setSpeechRate(0.45); // natural Turkish pace
-      await _flutterTts.setPitch(0.98);      // warm pitch
-      print('TTS: Local language set to tr-TR.');
+      if (!found) {
+        print('TTS WARNING: Turkish not available on this device! Falling back to en-US.');
+        await _flutterTts.setLanguage('en-US');
+      }
     } else {
-      await _flutterTts.setLanguage('en-US');
-      await _flutterTts.setSpeechRate(0.44);
-      await _flutterTts.setPitch(0.98);
-      print('TTS: Local language tr-TR not available, fell back to en-US.');
+      print('TTS: Turkish (tr-TR) language confirmed.');
     }
 
-    // Configure voices based on selected language
+    // ── 3. Fine-tune speech parameters for natural Turkish articulation ──
+    // Turkish has specific phonetic characteristics:
+    //   - Clear consonants: ç[tʃ], ş[ʃ], ğ[ɰ] need slower, deliberate articulation
+    //   - Vowel harmony: ö[ø], ü[y], ı[ɯ] need proper mouth shaping
+    //   - Agglutinative suffixes need even pacing to stay intelligible
+    await _flutterTts.setVolume(1.0);
+    await _flutterTts.setSpeechRate(0.42);  // Slightly slower for clear ç/ş/ğ articulation
+    await _flutterTts.setPitch(1.0);        // Neutral pitch — natural Turkish intonation
+
+    // ── 4. Select the highest-quality Turkish voice ──
     final voices = await _flutterTts.getVoices;
     if (voices is List) {
       final voiceList = List<Map<dynamic, dynamic>>.from(voices);
-      final isTurkishSelected = (await _flutterTts.getDefaultVoice)?['locale']?.toString().contains('tr') ?? false;
 
-      final targetLocale = isTurkishSelected ? 'tr' : 'en';
-      final targetVoices = voiceList.where((v) {
+      // Filter to only Turkish voices
+      final turkishVoices = voiceList.where((v) {
         final locale = v['locale']?.toString().toLowerCase() ?? '';
-        return locale.startsWith(targetLocale);
+        return locale.startsWith('tr');
       }).toList();
 
-      if (targetVoices.isNotEmpty) {
-        final selectedVoice = targetVoices.firstWhere(
+      print('TTS: Found ${turkishVoices.length} Turkish voice(s)');
+      for (final v in turkishVoices) {
+        print('  → ${v['name']} (${v['locale']})');
+      }
+
+      if (turkishVoices.isNotEmpty) {
+        // Quality tiers — pick the best available voice
+        // Tier 1: Neural / Natural voices (highest quality, best articulation)
+        // Tier 2: WaveNet / Network voices (high quality)
+        // Tier 3: Standard voices (acceptable)
+        final qualityKeywords = [
+          ['neural', 'natural'],           // Tier 1
+          ['wavenet', 'network', 'studio'], // Tier 2
+          ['premium', 'enhanced'],          // Tier 2.5
+        ];
+
+        Map<dynamic, dynamic>? bestVoice;
+
+        for (final tier in qualityKeywords) {
+          if (bestVoice != null) break;
+          for (final voice in turkishVoices) {
+            final name = voice['name']?.toString().toLowerCase() ?? '';
+            if (tier.any((keyword) => name.contains(keyword))) {
+              bestVoice = voice;
+              break;
+            }
+          }
+        }
+
+        // Fallback: prefer female voices (typically clearer Turkish diction)
+        bestVoice ??= turkishVoices.firstWhere(
           (v) {
             final name = v['name']?.toString().toLowerCase() ?? '';
-            return name.contains('wavenet') || 
-                   name.contains('neural') || 
-                   name.contains('natural') || 
-                   name.contains('network') ||
-                   name.contains('google');
+            return name.contains('female') || name.contains('kadın') || name.contains('woman');
           },
-          orElse: () => targetVoices.first,
+          orElse: () => turkishVoices.first,
         );
 
-        final voiceName = selectedVoice['name']?.toString();
+        final voiceName = bestVoice['name']?.toString();
+        final voiceLocale = bestVoice['locale']?.toString() ?? 'tr-TR';
         if (voiceName != null) {
           await _flutterTts.setVoice({
             'name': voiceName,
-            'locale': selectedVoice['locale']?.toString() ?? (isTurkishSelected ? 'tr-TR' : 'en-US'),
+            'locale': voiceLocale,
           });
-          print('TTS Hard-Forced Local Voice: $voiceName');
+          print('TTS: ✓ Selected Turkish voice: $voiceName ($voiceLocale)');
         }
+      } else {
+        print('TTS: No dedicated Turkish voices found, relying on language setting.');
       }
     }
 
+    // ── 5. Register event handlers ──
     _flutterTts.setStartHandler(() {
       if (onSpeechStart != null) onSpeechStart!();
     });
     
     _flutterTts.setCompletionHandler(() {
       print('TTS (Local): Finished speaking');
+      _progressTimer?.cancel();
       if (onSpeechFinished != null) onSpeechFinished!();
     });
     
-    _flutterTts.setProgressHandler((String text, int start, int end, String word) {
+    _flutterTts.setErrorHandler((msg) {
+      print('TTS Local Error: $msg');
+      _progressTimer?.cancel();
+    });
+  }
+
+  Timer? _progressTimer;
+
+  void _startTimedProgress(String text) {
+    _progressTimer?.cancel();
+    
+    // Clean text from punctuation for cleaner word-by-word emission
+    final cleanText = text.replaceAll(RegExp(r'[^\w\s\d\xAA-\xFF]'), '');
+    final words = cleanText.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+    if (words.isEmpty) return;
+
+    int wordIndex = 0;
+    
+    void scheduleNextWord() {
+      if (wordIndex >= words.length) {
+        _progressTimer?.cancel();
+        return;
+      }
+      
+      final word = words[wordIndex];
+      final start = text.indexOf(word);
+      final end = start + word.length;
+      
+      // Emit the progress event
       if (onProgress != null) {
         onProgress!(text, start, end, word);
       }
-    });
-
-    _flutterTts.setErrorHandler((msg) {
-      print('TTS Local Error: $msg');
-    });
+      
+      // Calculate speaking duration for this word
+      // 180ms base + 72ms per character is perfectly calibrated for the 0.42/0.45 speed rate
+      final durationMs = 180 + (word.length * 72);
+      
+      wordIndex++;
+      _progressTimer = Timer(Duration(milliseconds: durationMs), scheduleNextWord);
+    }
+    
+    scheduleNextWord();
   }
 
   /// Speak the given [text] with debounce logic.
@@ -173,98 +225,35 @@ class TtsService {
     await _speakWithEngine(text);
   }
 
-  /// Stop all active speaking channels.
-  Future<void> _stopAll() async {
-    await _flutterTts.stop();
-    if (_isSpeakingCloud) {
-      await _cloudAudioPlayer.stop();
-      _isSpeakingCloud = false;
-    }
-  }
-
-  /// Direct speech execution choosing between Cloud TTS and Local Fallback.
+  /// Direct speech execution using local TTS engine.
   Future<void> _speakWithEngine(String text) async {
-    await _stopAll();
-
-    if (_useCloudTts && _googleApiKey != null && _googleApiKey!.isNotEmpty) {
-      final success = await _speakCloud(text);
-      if (success) {
-        return;
-      }
-      print('TTS: Cloud engine failed. Falling back to local TTS.');
-    }
-
+    _progressTimer?.cancel();
+    await _flutterTts.stop();
     await _flutterTts.speak(text);
-  }
-
-  /// Call Google Cloud TTS API to synthesize speech.
-  Future<bool> _speakCloud(String text) async {
-    if (_tempAudioFile == null) return false;
     
-    try {
-      final url = Uri.parse('https://texttospeech.googleapis.com/v1/text:synthesize?key=$_googleApiKey');
-      
-      // Request Neural2 Turkish voice (very natural)
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'input': {'text': text},
-          'voice': {
-            'languageCode': 'tr-TR',
-            'name': 'tr-TR-Neural2-A' // Premium neural Turkish female voice
-          },
-          'audioConfig': {
-            'audioEncoding': 'MP3',
-            'speakingRate': 0.95, // natural Turkish speed
-            'pitch': 0.0
-          }
-        }),
-      ).timeout(const Duration(seconds: 4));
-
-      if (response.statusCode != 200) {
-        print('TTS Cloud API Error: ${response.statusCode} - ${response.body}');
-        return false;
-      }
-
-      final data = jsonDecode(response.body);
-      final audioContent = data['audioContent'] as String?;
-      if (audioContent == null || audioContent.isEmpty) {
-        print('TTS Cloud API returned empty audioContent');
-        return false;
-      }
-
-      final bytes = base64Decode(audioContent);
-      await _tempAudioFile!.writeAsBytes(bytes, flush: true);
-      
-      _isSpeakingCloud = true;
-      if (onSpeechStart != null) onSpeechStart!();
-      
-      await _cloudAudioPlayer.play(DeviceFileSource(_tempAudioFile!.path));
-      return true;
-    } catch (e) {
-      print('TTS Cloud Synthesis exception: $e');
-      return false;
-    }
+    // Start synchronized word progress matching the speaking speed
+    _startTimedProgress(text);
   }
 
   /// Toggle mute state. Returns the new mute state.
   bool toggleMute() {
     _isMuted = !_isMuted;
     if (_isMuted) {
-      _stopAll();
+      _progressTimer?.cancel();
+      _flutterTts.stop();
     }
     return _isMuted;
   }
 
   /// Stop any ongoing speech.
   Future<void> stop() async {
-    await _stopAll();
+    _progressTimer?.cancel();
+    await _flutterTts.stop();
   }
 
   /// Dispose TTS resources.
   Future<void> dispose() async {
-    await _stopAll();
-    await _cloudAudioPlayer.dispose();
+    _progressTimer?.cancel();
+    await _flutterTts.stop();
   }
 }

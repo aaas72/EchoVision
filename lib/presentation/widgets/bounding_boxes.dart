@@ -14,7 +14,7 @@ class BoundingBoxes extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (detections.isEmpty || currentMode != DetectionMode.object) {
+    if (detections.isEmpty || (currentMode != DetectionMode.object && currentMode != DetectionMode.hand)) {
       return const SizedBox.shrink();
     }
 
@@ -58,7 +58,7 @@ class BoundingBoxes extends StatelessWidget {
                   ),
                 ),
                 child: Text(
-                  d.label,
+                  d.turkishLabel,
                   style: const TextStyle(
                     color: Colors.black,
                     fontSize: 12,

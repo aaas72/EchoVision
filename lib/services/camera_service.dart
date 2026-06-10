@@ -29,7 +29,7 @@ class CameraService {
 
     _controller = CameraController(
       backCamera,
-      ResolutionPreset.high, // 1920x1080 (16:9) — matches phone screen aspect, no unwanted zoom/crop
+      ResolutionPreset.high, // Reverted to high resolution (1080p) to provide detailed crops for the AI model
       enableAudio: false,
       imageFormatGroup: ImageFormatGroup.jpeg, // JPEG gives higher-quality preview on Xiaomi/Redmi/Samsung hardware encoders
     );
