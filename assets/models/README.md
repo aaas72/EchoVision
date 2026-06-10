@@ -5,10 +5,10 @@ This directory contains the optimized machine learning models for real-time visu
 ## Active Models
 
 ### 🟢 Object Detection (General)
-- **Model:** `yolo11n.tflite`
-- **Labels:** `labelmap.txt` (COCO dataset, 80 classes with Arabic translations in `yolo_service.dart`)
-- **Architecture:** YOLOv11n
-- **Purpose:** Detecting 80+ common objects in real-time
+- **Model:** `yolov8n-oiv7.tflite`
+- **Labels:** `labelmap.txt` (Open Images v7 dataset, 600 classes with Turkish translations in `detection_result.dart`)
+- **Architecture:** YOLOv8n
+- **Purpose:** Detecting 600+ common objects in real-time
 
 ### 🟢 Currency Recognition (Turkish Lira) — **OFFICIAL v2**
 - **Model:** `lira.tflite`

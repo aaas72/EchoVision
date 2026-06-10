@@ -43,3 +43,8 @@ app.*.map.json
 .env
 .env.*
 android/build/
+
+# YOLO models and intermediate export files
+*.pt
+*.onnx
+yolov8n-oiv7_saved_model/

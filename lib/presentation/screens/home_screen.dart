@@ -308,46 +308,8 @@ class _HomeScreenState extends State<HomeScreen>
   // ══════════════════════════════════════════════════════════════
 
   void _startLiveDetection() {
-    _cameraService.startImageStream((image) async {
-      if (_isProcessingFrame || _isAnalyzing) return;
-      
-      // Only run live detection for local modes (Object)
-      if (_currentMode != DetectionMode.object) return;
-
-      // Battery-Adaptive Frame Throttling
-      final now = DateTime.now();
-      final throttleMs = _isLowBattery ? 1000 : 333;
-      if (_lastFrameTime != null && 
-          now.difference(_lastFrameTime!).inMilliseconds < throttleMs) {
-        return;
-      }
-      _lastFrameTime = now;
-
-      
-      _isProcessingFrame = true;
-      try {
-        final results = await _yoloService.analyzeFrame(image, _cameraService.sensorOrientation);
-        if (mounted) {
-          setState(() {
-            _detections = results;
-          });
-
-          // Handle Speech Feedback
-          final canSpeak = _lastSpeechTime == null || now.difference(_lastSpeechTime!).inMilliseconds > _speechThrottleMs;
-
-          if (_currentMode == DetectionMode.object && canSpeak && results.isNotEmpty) {
-            // Group and speak labels cleanly
-            final names = results.map((d) => d.turkishLabel).toSet().join(', ');
-            _ttsService.speakImmediate(names);
-            _lastSpeechTime = now;
-          }
-        }
-      } catch (e) {
-        print('Frame processing error: $e');
-      } finally {
-        _isProcessingFrame = false;
-      }
-    });
+    // Continuous live stream inference is disabled per user request.
+    // Object detection and Handheld scanning are now triggered manually via "Tap to Scan".
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -412,6 +374,28 @@ class _HomeScreenState extends State<HomeScreen>
         } else {
           result = 'Hiçbir nesne algılanmadı.';
         }
+      } else if (_currentMode == DetectionMode.hand) {
+        final results = await _yoloService.analyzeHandheldObject(imageFile);
+        
+        if (results.isNotEmpty) {
+          // Speak the held objects
+          final names = results.map((d) => d.turkishLabel).toSet().join(', ');
+          result = 'Elinizde $names var.';
+          
+          // Show the bounding boxes for the cropped objects in UI
+          if (mounted) {
+            setState(() {
+              _detections = results;
+            });
+          }
+        } else {
+          result = 'El veya elinizde bir nesne algılanmadı.';
+          if (mounted) {
+            setState(() {
+              _detections = [];
+            });
+          }
+        }
       } else if (_currentMode == DetectionMode.currency) {
         // 100% LOCAL & OFFLINE currency recognition using TFLite
         result = await _liraDetectorService.detectCurrency(File(imageFile.path));
@@ -462,6 +446,7 @@ class _HomeScreenState extends State<HomeScreen>
   static const _modeOrder = [
     DetectionMode.text,
     DetectionMode.object,
+    DetectionMode.hand,
     DetectionMode.currency,
     DetectionMode.medication,
     DetectionMode.scene,
@@ -502,6 +487,7 @@ class _HomeScreenState extends State<HomeScreen>
     setState(() {
       _currentMode = mode;
       _lastResult = null;
+      _detections = []; // Clear previous bounding boxes
     });
     _resultFadeController.reset();
     _geminiService.clearSession();
@@ -518,6 +504,9 @@ class _HomeScreenState extends State<HomeScreen>
         break;
       case DetectionMode.object:
         name = 'Nesne Tarayıcı';
+        break;
+      case DetectionMode.hand:
+        name = 'Eldeki Nesne';
         break;
       case DetectionMode.currency:
         name = 'Para Okuyucu';
