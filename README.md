@@ -90,7 +90,7 @@ flutter run --release
 
 ```bash
 cd ml_training
-python download_dataset.py
+python download_dataset.py   # fetches the Turkish banknote dataset (not stored in this repo)
 python train_yolo.py
 ```
 

@@ -48,3 +48,10 @@ android/build/
 *.pt
 *.onnx
 yolov8n-oiv7_saved_model/
+
+# Training data and artifacts (download with ml_training/download_dataset.py)
+ml_training/dataset/
+ml_training/dataset_raw/
+ml_training/dataset.zip
+ml_training/yolo_runs/*/weights/
+*.pt
